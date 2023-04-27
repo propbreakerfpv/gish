@@ -1,5 +1,5 @@
 [package]
-name = "tui_test"
+name = "gish"
 version = "0.1.0"
 edition = "2021"
 description = "if tmux and zsh had a kid"
