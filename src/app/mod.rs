@@ -1,23 +1,12 @@
-use std::{io, cell::RefCell, fs, error::Error, collections::{HashMap, HashSet}};
+use std::{io, cell::RefCell, error::Error };
 
 use crossterm::{event::{Event, self, KeyCode}, terminal::{disable_raw_mode, LeaveAlternateScreen}};
-use hlua::{Lua, function1, LuaFunction, function0, LuaTable};
+use hlua::{Lua, LuaFunction };
 use tui::{backend::Backend, Terminal, text::{Span, Text, Spans}};
 
 use crate::{ui::ui, shell::run_command, lua::setup_lua};
 
-#[derive(Debug, Clone)]
-pub struct Prompt<'a> {
-    pub elements: Vec<Span<'a>>,
-}
 
-impl<'a> Prompt<'a> {
-    fn new() -> Prompt<'a> {
-        Prompt {
-            elements: Vec::new(),
-        }
-    }
-}
 
 
 
@@ -27,8 +16,10 @@ pub struct App<'a> {
     pub cmd_input: String,
     pub content: Text<'a>,
     pub mode: AppMode,
-    pub prompt: Prompt<'a>,
+    pub prompt: Vec<Span<'a>>,
     pub status_bar: Text<'a>,
+    pub cmd_history: Vec<String>,
+    pub cmd_history_idx: usize,
     pub scroll: (u16, u16),
     pub lua: RefCell<Lua<'a>>,
 }
@@ -42,8 +33,10 @@ impl<'a> App<'a> {
             cmd_input: String::new(),
             content: Text::from(""),
             mode: AppMode::Normal,
-            prompt: Prompt::new(),
+            prompt: Vec::new(),
             status_bar: Text::from("status_bar"),
+            cmd_history: Vec::new(),
+            cmd_history_idx: 0,
             scroll: (0, 0),
             lua: RefCell::new(Lua::new()),
         }
@@ -74,8 +67,6 @@ pub fn reset_terminal() -> Result<()> {
 
 
 pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
-
-
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
 
@@ -83,13 +74,33 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
             match app.mode.clone() {
                 AppMode::Normal => match key.code {
                     KeyCode::Char(c) => {
+                        app.cmd_history_idx = 0;
                         app.cmd_input.push(c);
                     }
                     KeyCode::Backspace => {
                         app.cmd_input.pop();
                     }
                     KeyCode::Enter => {
-                        let mut prompt = app.prompt.elements.clone();
+                        if app.cmd_history_idx > 0 {
+                            // todo this should not be get_mut but the barrow checker is playing
+                            // games with me so thats what it is for now.
+                            let cmd_history_len = app.cmd_history.clone().len();
+                            let a = app.cmd_history.get_mut(cmd_history_len - app.cmd_history_idx);
+                            match a {
+                                Some(v) => app.cmd_input = v.clone(),
+                                None => {}
+                            };
+                        }
+                        let mut prompt = app.prompt.clone();
+                        if app.cmd_history.len() > 0 {
+                            if let Some(v) = app.cmd_history.get(app.cmd_history.len() - 1) {
+                                if *v != app.cmd_input {
+                                    app.cmd_history.push(app.cmd_input.clone());
+                                }
+                            }
+                        } else {
+                            app.cmd_history.push(app.cmd_input.clone());
+                        }
                         prompt.push(Span::raw(app.cmd_input.clone()));
                         app.content.extend(Text::from(Spans::from(prompt)));
                         {
@@ -104,11 +115,41 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
                         }
                         run_command(app.cmd_input.clone(), &mut app);
                     }
-                    KeyCode::Up => {
+                    KeyCode::End => {
                         app.mode = AppMode::Command;
                     }
-                    KeyCode::Down => {
+                    KeyCode::Home => {
                         app.mode = AppMode::Searching;
+                    }
+                    KeyCode::Up => {
+                        if app.cmd_history_idx < app.cmd_history.len() {
+                            app.cmd_history_idx += 1;
+                            // todo this should not be get_mut but the barrow checker is playing
+                            // games with me so thats what it is for now.
+                            let cmd_history_len = app.cmd_history.clone().len();
+                            let a = app.cmd_history.get_mut(cmd_history_len - app.cmd_history_idx);
+                            match a {
+                                Some(v) => app.cmd_input = v.clone(),
+                                None => {}
+                            };
+                        }
+                    }
+                    KeyCode::Down => {
+                        if app.cmd_history_idx > 0 {
+                            app.cmd_history_idx -= 1;
+                            if app.cmd_history_idx == 0 {
+                                app.cmd_input = String::new();
+                            } else {
+                                // todo this should not be get_mut but the barrow checker is playing
+                                // games with me so thats what it is for now.
+                                let cmd_history_len = app.cmd_history.clone().len();
+                                let a = app.cmd_history.get_mut(cmd_history_len - app.cmd_history_idx);
+                                match a {
+                                    Some(v) => app.cmd_input = v.clone(),
+                                    None => {}
+                                };
+                            }
+                        }
                     }
                     _ => {}
                 },

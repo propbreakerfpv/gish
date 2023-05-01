@@ -2,8 +2,6 @@ use app::{run_app, App, reset_terminal};
 use std::{error::Error, io, panic::set_hook};
 use tui::{
     backend::CrosstermBackend,
-    style::{Color, Style},
-    text::Span,
     Terminal,
 };
 
@@ -17,6 +15,7 @@ mod app;
 mod lua;
 mod shell;
 mod ui;
+mod ansi;
 
 fn main() -> Result<(), Box<dyn Error>> {
     // custom panic hook to reset terminal
@@ -34,15 +33,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     // create app and run it
-
-    let mut app: App = App::new();
-
-    app.prompt.elements.push(Span::styled("{", Style::default().fg(Color::Rgb(255, 255, 0)),));
-    app.prompt.elements.push(Span::styled("prop",Style::default().fg(Color::Rgb(255, 0, 0)),));
-    app.prompt.elements.push(Span::styled("}",Style::default().fg(Color::Rgb(255, 255, 0)),));
-    app.prompt.elements.push(Span::styled("{",Style::default().fg(Color::Rgb(255, 255, 0)),));
-    app.prompt.elements.push(Span::styled("~/coding/tui_test/",Style::default().fg(Color::Rgb(255, 0, 0)),));
-    app.prompt.elements.push(Span::styled("} ",Style::default().fg(Color::Rgb(255, 255, 0)),));
+    let app: App = App::new();
 
     app.setup_lua();
     let res = run_app(&mut terminal, app);

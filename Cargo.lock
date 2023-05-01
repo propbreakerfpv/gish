@@ -99,6 +99,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "gish"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crossbeam-channel",
+ "crossterm 0.26.1",
+ "hlua",
+ "home",
+ "lazy_static",
+ "once_cell",
+ "tui",
+ "unicode-width",
+]
+
+[[package]]
 name = "hlua"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -267,21 +282,6 @@ dependencies = [
  "cassowary",
  "crossterm 0.25.0",
  "unicode-segmentation",
- "unicode-width",
-]
-
-[[package]]
-name = "tui_test"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "crossbeam-channel",
- "crossterm 0.26.1",
- "hlua",
- "home",
- "lazy_static",
- "once_cell",
- "tui",
  "unicode-width",
 ]
 

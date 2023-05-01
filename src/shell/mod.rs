@@ -2,8 +2,18 @@ use std::process::{Command, Stdio};
 
 use tui::text::Text;
 
-use crate::app::App;
+use crate::{app::{App, reset_terminal}, ansi::test};
 
+pub fn run_if_builtin(cmd: String) -> bool {
+    let path = cmd.split(" ").next().unwrap().to_string();
+    match path.as_str() {
+        "exit" => {
+            reset_terminal().unwrap();
+            std::process::exit(0);
+        }
+        &_ => false
+    }
+}
 
 pub fn run_command(cmd: String, app: &mut App) {
     if cmd.is_empty() {
@@ -11,6 +21,9 @@ pub fn run_command(cmd: String, app: &mut App) {
     }
     app.cmd_input.clear();
     let path = cmd.split(" ").next().unwrap().to_string();
+    if run_if_builtin(cmd.clone()) {
+        return;
+    }
     let mut p = Command::new(&path);
     p.stdout(Stdio::piped());
 
@@ -35,6 +48,7 @@ pub fn run_command(cmd: String, app: &mut App) {
         acc.push(x as char);
         acc
     });
+    test(content.clone());
     app.content.extend(Text::from(content));
 
     // let stdout = p.stdout.unwrap();
