@@ -48,8 +48,9 @@ pub fn run_command(cmd: String, app: &mut App) {
         acc.push(x as char);
         acc
     });
-    test(content.clone());
-    app.content.extend(Text::from(content));
+    
+    app.content.extend(test(content.clone()));
+    // app.content.extend(Text::from(content));
 
     // let stdout = p.stdout.unwrap();
     // let mut bufr = BufReader::new(stdout);

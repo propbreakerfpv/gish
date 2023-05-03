@@ -4,14 +4,187 @@
 
 
 use anyhow::{anyhow, Result};
+use tui::{text::{Text, Span, Spans}, style::{self, Style, Modifier}};
 
-pub fn test(code: String) {
+pub fn test<'a>(code: String) -> Text<'a> {
     let parser = ANSI_Parser {
         content: code.into(),
         pos: 0,
     };
-    panic!("{:?}", parser.parse());
-    // parser.parse();
+    // panic!("{:?}", construct_text(parser.parse()));
+    construct_text(parser.parse())
+}
+
+fn construct_text<'a>(input: Vec<Char>) -> Text<'a> {
+    let mut spans = Vec::new();
+    let mut span = Vec::new();
+    let mut current_text = String::new();
+    let mut style = Style::default();
+    for char in input {
+        match char {
+            Char::Char(char) => {
+                if char == '\n' {
+                    span.push(Span::styled(current_text.clone(), style.clone()));
+                    spans.push(Spans::from(span.clone()));
+                    span.clear();
+                    current_text.clear();
+                }
+                current_text.push(char);
+            }
+            Char::Ansi(ansi) => {
+                match ansi {
+                    // Ansi::CursorUp(v) => {}
+                    // Ansi::CursorUp(v) => {}
+                    // Ansi::CursonDown(v) => {}
+                    // Ansi::CursorForward(v) => {}
+                    // Ansi::CursorBack(v) => {}
+                    // Ansi::CursorNextLine(v) => {}
+                    // Ansi::CursorPreviousLine(v) => {}
+                    // Ansi::CursorHorizontalAbsolute(v) => {}
+                    // Ansi::CursorPosition((n, m)) => {}
+                    // Ansi::EraseInDisplay(v) => {}
+                    // Ansi::EraseInLine(v) => {}
+                    // Ansi::ScrollUp(v) => {}
+                    // Ansi::ScrollDown(v) => {}
+                    // Ansi::HorizontalVerticalPosition((n, m)) => {}
+                    Ansi::SGR(sgr) => {
+                        if current_text.len() != 0 {
+                            span.push(Span::styled(current_text.clone(), style.clone()));
+                        }
+                        // text.extend(Text::styled(current_text.clone(), style.clone()));
+                        current_text.clear();
+                        parse_sgr(sgr, &mut style);
+                    }
+                    _ => {}
+            }
+            }
+        }
+    }
+    if current_text.len() != 0 {
+        span.push(Span::styled(current_text.clone(), style.clone()));
+        spans.push(Spans::from(span.clone()));
+    }
+    Text::from(spans)
+}
+
+fn parse_sgr(sgrs: Vec<SGR>, style: &mut Style) -> Style {
+    for sgr in sgrs {
+        match sgr {
+            SGR::Reset => {
+                *style = Style::default();
+                // panic!("{:?}", style);
+            }
+            SGR::Bold => {
+                *style = style.patch(Style::default().add_modifier(Modifier::BOLD));
+            }
+            SGR::Dim => {
+                *style = style.patch(Style::default().add_modifier(Modifier::DIM));
+            }
+            SGR::Italic => {
+                *style = style.patch(Style::default().add_modifier(Modifier::ITALIC));
+            }
+            SGR::Underline => {
+                *style = style.patch(Style::default().add_modifier(Modifier::UNDERLINED));
+            }
+            SGR::SlowBlink => {
+                *style = style.patch(Style::default().add_modifier(Modifier::SLOW_BLINK));
+            }
+            SGR::RapidBlink => {
+                *style = style.patch(Style::default().add_modifier(Modifier::RAPID_BLINK));
+            }
+            SGR::Invert => {
+                *style = style.patch(Style::default().add_modifier(Modifier::REVERSED));
+            }
+            SGR::Hide => {
+                *style = style.patch(Style::default().add_modifier(Modifier::HIDDEN));
+            }
+            SGR::Strike => {
+                *style = style.patch(Style::default().add_modifier(Modifier::CROSSED_OUT));
+            }
+            SGR::PrimaryFont => {
+            }
+            SGR::AltFont(_u8) => {}
+            SGR::Gothic => {}
+            SGR::DoublyUnderlined => {}
+            SGR::NormalIntensity => {}
+            SGR::NotItalicOrBlackletter => {}
+            SGR::NotUnderlined => {
+                *style = style.patch(Style::default().remove_modifier(Modifier::UNDERLINED));
+            }
+            SGR::NotBlinking => {
+                *style = style.patch(Style::default().remove_modifier(Modifier::RAPID_BLINK).remove_modifier(Modifier::SLOW_BLINK));
+            }
+            SGR::ProportionalSpacing => {}
+            SGR::NotInvert => {
+                *style = style.patch(Style::default().remove_modifier(Modifier::REVERSED));
+            }
+            SGR::NotHidden => {
+                *style = style.patch(Style::default().remove_modifier(Modifier::HIDDEN));
+            }
+            SGR::NotStrike => {
+                *style = style.patch(Style::default().remove_modifier(Modifier::CROSSED_OUT));
+            }
+            SGR::SetForeground7(u8) => {
+                *style = style.patch(Style::default().fg(get_color_idx(u8)));
+            }
+            SGR::SetForeground(color) => {
+                match color {
+                    Color::N(_) => {}
+                    Color::RGB(rgb) => {
+                        style.patch(Style::default().fg(style::Color::Rgb(rgb.r, rgb.g, rgb.b)));
+                    }
+                }
+            }
+            SGR::DefaultForeground => {
+                *style = style.patch(Style::default().fg(style::Color::Reset));
+            }
+            SGR::SetBackground7(u8) => {
+                *style = style.patch(Style::default().bg(get_color_idx(u8)));
+            }
+            SGR::SetBackground(color) => {
+                match color {
+                    Color::N(_) => {}
+                    Color::RGB(rgb) => {
+                        *style = style.patch(Style::default().bg(style::Color::Rgb(rgb.r, rgb.g, rgb.b)));
+                    }
+                }
+            }
+            SGR::DefaultBackground => {
+                *style = style.patch(Style::default().bg(style::Color::Reset));
+            }
+            SGR::DisableProportionalSpacing => {}
+            SGR::Framed => {}
+            SGR::Encircled => {}
+            SGR::Overlined => {}
+            SGR::NotFramedOrEncircled => {}
+            SGR::NotOverlined => {}
+            SGR::SetUnderline(_color) => {}
+            SGR::DefaultUnderline => {}
+
+            // todo bright forground and background are not actualy bright there just the
+            // normal 7 color
+            SGR::SetBrightForground7(u8) => {
+                *style = style.patch(Style::default().fg(get_color_idx(u8)));
+            }
+            SGR::SetBrightBackground7(u8) => {
+                *style = style.patch(Style::default().bg(get_color_idx(u8)));
+            }
+        }
+    }
+    Style::default()
+}
+
+fn get_color_idx(idx: u8) -> style::Color {
+    match idx {
+        1 => style::Color::Red,
+        2 => style::Color::Green,
+        3 => style::Color::Yellow,
+        4 => style::Color::Blue,
+        5 => style::Color::Magenta,
+        6 => style::Color::Cyan,
+        7 => style::Color::White,
+        _ => style::Color::Reset,
+    }
 }
 
 #[allow(non_camel_case_types)]
@@ -76,7 +249,7 @@ enum SGR {
     NotBlinking,
     ProportionalSpacing,
     NotInvert,
-    NotConcealed,
+    NotHidden,
     NotStrike,
     SetForeground7(u8),
     SetForeground(Color),
@@ -301,10 +474,15 @@ impl ANSI_Parser {
         let mut color_push_type = ColorPushType::Forground;
         let mut rgb: Vec<u8> = Vec::new();
 
+
+
         for arg in vec_to_string(args).split(";") {
-            let arg = arg.trim().trim_start_matches("0");
+
+
+            // todo find a better way to trim leading 0s without removing valid 0s
+            let mut arg = arg.trim().trim_start_matches("0");
             if arg.len() == 0 {
-                continue;
+                arg = "0"
             }
             if next_color_type_select {
                 in_color = true;
@@ -427,7 +605,7 @@ impl ANSI_Parser {
                     ret.push(SGR::NotInvert)
                 }
                 "28" => {
-                    ret.push(SGR::NotConcealed)
+                    ret.push(SGR::NotHidden)
                 }
                 "29" => {
                     ret.push(SGR::NotStrike)
@@ -487,10 +665,10 @@ impl ANSI_Parser {
                 "100"|"101"|"102"|"103"|"104"|"105"|"106"|"107" => {
                     ret.push(SGR::SetBrightBackground7(arg.parse::<u8>().unwrap() - 100))
                 }
-                e => {
+                _ => {
                     // error?
                     // return Err(anyhow!("no a valid sgr code `{}`", e))
-                    println!("ERROR `{}`", e);
+                    // println!("ERROR `{}`", e);
                 }
             }
         }
