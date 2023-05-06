@@ -18,9 +18,16 @@ gish.print = function(s)
     gish.content = gish.content .. s
 end
 
+gish.alais = function (name, value)
+    _internal.refresh.alais = _internal.refresh.alais .. name .. ":" .. value .. "\n"
+end
+
 
 _internal = {
     events = {},
+    refresh = {
+        alais = ""
+    },
 
     on_tick = function()
         local ret = Content
@@ -54,5 +61,11 @@ end)
 gish.register_event("render_status_bar", function ()
     return {"2d82946e8e8e8hello", "029d5d8 world"}
 end)
+
+gish.register_event("refresh", function ()
+    return _internal.refresh
+end)
+
+gish.alais("ls", "ls --color")
 
 -- gish.print("hello from lua")

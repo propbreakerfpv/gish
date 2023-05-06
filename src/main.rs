@@ -1,4 +1,5 @@
 use app::{run_app, App, reset_terminal};
+use shell::run_command;
 use std::{error::Error, io, panic::set_hook};
 use tui::{
     backend::CrosstermBackend,
@@ -33,9 +34,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     // create app and run it
-    let app: App = App::new();
+    let mut app: App = App::new();
 
     app.setup_lua();
+
+    run_command("refresh".to_string(), &mut app);
+
     let res = run_app(&mut terminal, app);
 
     // restore terminal

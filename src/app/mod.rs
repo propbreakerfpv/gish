@@ -1,4 +1,4 @@
-use std::{io, cell::RefCell, error::Error };
+use std::{io, cell::RefCell, error::Error, collections::HashMap };
 
 use crossterm::{event::{Event, self, KeyCode}, terminal::{disable_raw_mode, LeaveAlternateScreen}};
 use hlua::{Lua, LuaFunction };
@@ -6,7 +6,9 @@ use tui::{backend::Backend, Terminal, text::{Span, Text, Spans}};
 
 use crate::{ui::ui, shell::run_command, lua::setup_lua};
 
+use self::auto_comp::on_comp;
 
+pub mod auto_comp;
 
 
 
@@ -20,6 +22,7 @@ pub struct App<'a> {
     pub status_bar: Text<'a>,
     pub cmd_history: Vec<String>,
     pub cmd_history_idx: usize,
+    pub alais: HashMap<String, String>,
     pub scroll: (u16, u16),
     pub lua: RefCell<Lua<'a>>,
 }
@@ -37,6 +40,7 @@ impl<'a> App<'a> {
             status_bar: Text::from("status_bar"),
             cmd_history: Vec::new(),
             cmd_history_idx: 0,
+            alais: HashMap::new(),
             scroll: (0, 0),
             lua: RefCell::new(Lua::new()),
         }
@@ -79,6 +83,9 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
                     }
                     KeyCode::Backspace => {
                         app.cmd_input.pop();
+                    }
+                    KeyCode::Tab => {
+                        on_comp(&app);
                     }
                     KeyCode::Enter => {
                         if app.cmd_history_idx > 0 {

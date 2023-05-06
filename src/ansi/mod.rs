@@ -3,19 +3,23 @@
 // https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
 
 
+
+
 use anyhow::{anyhow, Result};
 use tui::{text::{Text, Span, Spans}, style::{self, Style, Modifier}};
 
-pub fn test<'a>(code: String) -> Text<'a> {
+use crate::app::App;
+
+pub fn test<'a>(app: &mut App, code: String) -> Text<'a> {
     let parser = ANSI_Parser {
         content: code.into(),
         pos: 0,
     };
     // panic!("{:?}", construct_text(parser.parse()));
-    construct_text(parser.parse())
+    construct_text(app, parser.parse())
 }
 
-fn construct_text<'a>(input: Vec<Char>) -> Text<'a> {
+fn construct_text<'a>(app: &mut App, input: Vec<Char>) -> Text<'a> {
     let mut spans = Vec::new();
     let mut span = Vec::new();
     let mut current_text = String::new();
@@ -42,7 +46,21 @@ fn construct_text<'a>(input: Vec<Char>) -> Text<'a> {
                     // Ansi::CursorPreviousLine(v) => {}
                     // Ansi::CursorHorizontalAbsolute(v) => {}
                     // Ansi::CursorPosition((n, m)) => {}
-                    // Ansi::EraseInDisplay(v) => {}
+                    Ansi::EraseInDisplay(v) => {
+                        match v.as_str() {
+                            // clear from cursor to end of screen
+                            "0" => {
+                            }
+                            // clear entire screen
+                            "2" => {
+                                app.content = Text::from("");
+                                app.scroll = (0, 0)
+                            }
+                            // clear entire screen and all lines saved in  scrollback buffer
+                            "3" => {}
+                            _ => {}
+                        }
+                    }
                     // Ansi::EraseInLine(v) => {}
                     // Ansi::ScrollUp(v) => {}
                     // Ansi::ScrollDown(v) => {}
@@ -371,7 +389,8 @@ impl ANSI_Parser {
     // should retrun something
     fn parse_escap_sequences(&mut self) -> Char {
         match self.consume_next() {
-            91 => {
+            // todo C0 control codes. se wikipedia
+            91 => { // [
                 self.parse_csi_sequences()
             }
             v => { Char::from(v) }
