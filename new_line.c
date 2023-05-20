@@ -1,0 +1,6 @@
+#include <stdio.h>
+
+int main(int argc, char *argv[]){
+    printf("test\ntest\n");
+    return 0;
+}

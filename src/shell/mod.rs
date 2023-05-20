@@ -1,43 +1,39 @@
 use std::process::{Command, Stdio};
 
 use hlua::{LuaTable, LuaFunction};
-use tui::text::Text;
 
 use crate::{app::{App, reset_terminal}, ansi::test};
 
 pub fn run_if_builtin(app: &mut App, cmd: String) -> Option<()> {
-    let path = cmd.split(" ").next().unwrap().to_string();
+    let path = cmd.split(' ').next().unwrap().to_string();
     match path.as_str() {
         "exit" => {
             reset_terminal().unwrap();
             std::process::exit(0);
         }
         "refresh" => {
-            app.content.extend(Text::from("refreshing"));
+            app.println("refreshing");
             let mut lua = app.lua.borrow_mut();
             let mut internal: LuaTable<_> = lua.get("_internal").unwrap();
             let run_event: Option<LuaFunction<_>> = internal.get("run_event");
 
-            match run_event {
-                Some(mut v) => {
-                    let mut table: LuaTable<_> = v.call_with_args("refresh").unwrap();
-                    for (k, v) in table.iter::<String, String>().filter_map(|e| e) {
-                        match k.as_str() {
-                            "alais" => {
-                                for alais in v.split('\n') {
-                                    let (k, a) = match alais.split_once(':') {
-                                        Some(v) => v,
-                                        None => break,
-                                    };
-                                    app.alais.insert(k.to_string(), a.to_string());
-                                }
+            if let Some(mut v) = run_event {
+                let mut table: LuaTable<_> = v.call_with_args("refresh").unwrap();
+                for (k, v) in table.iter::<String, String>().flatten() {
+                    match k.as_str() {
+                        "alais" => {
+                            for alais in v.split('\n') {
+                                let (k, a) = match alais.split_once(':') {
+                                    Some(v) => v,
+                                    None => break,
+                                };
+                                app.alais.insert(k.to_string(), a.to_string());
                             }
-                            _ => {}
                         }
+                        _ => {}
                     }
                 }
-                None => {}
-            };
+            }
             Some(())
         }
         "alais" => {
@@ -47,7 +43,7 @@ pub fn run_if_builtin(app: &mut App, cmd: String) -> Option<()> {
             // also cmd should be its own type.
             let name = cmd.split(' ').nth(1)?.to_string();
             let value = cmd.split(' ').nth(2)?.to_string();
-            app.alais.insert(name.clone(), value);
+            app.alais.insert(name, value);
             Some(())
         }
         &_ => None
@@ -60,7 +56,7 @@ pub fn run_command(mut cmd: String, app: &mut App) {
     }
 
     app.cmd_input.clear();
-    let path = cmd.split(" ").next().unwrap().to_string();
+    let path = cmd.split(' ').next().unwrap().to_string();
 
     if let Some(alais) = app.alais.get(&path) {
         let trimed_cmd = cmd.trim_start_matches(&path);
@@ -75,7 +71,7 @@ pub fn run_command(mut cmd: String, app: &mut App) {
     let mut p = Command::new(&path);
     p.stdout(Stdio::piped());
 
-    let mut iter = cmd.split(" ");
+    let mut iter = cmd.split(' ');
     iter.next();
     for arg in iter {
         p.arg(arg);
@@ -85,7 +81,7 @@ pub fn run_command(mut cmd: String, app: &mut App) {
         Ok(v) => v,
         Err(_) => {
             let msg = format!("`{}` command not found\n", path);
-            app.content.extend(Text::from(msg));
+            app.println(msg);
             return;
         }
     };
@@ -97,8 +93,8 @@ pub fn run_command(mut cmd: String, app: &mut App) {
         acc
     });
     
-    let new_content = test(app, content.clone());
-    app.content.extend(new_content);
+    let new_content = test(app, content);
+    app.content = new_content;
     // app.content.extend(Text::from(content));
 
     // let stdout = p.stdout.unwrap();

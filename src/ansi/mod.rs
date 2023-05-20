@@ -11,12 +11,176 @@ use tui::{text::{Text, Span, Spans}, style::{self, Style, Modifier}};
 use crate::app::App;
 
 pub fn test<'a>(app: &mut App, code: String) -> Text<'a> {
-    let parser = ANSI_Parser {
+
+
+    let parser = AnsiParser {
         content: code.into(),
         pos: 0,
     };
-    // panic!("{:?}", construct_text(parser.parse()));
-    construct_text(app, parser.parse())
+    // panic!("{:?}", construct_text(app, parser.parse()));
+    
+
+    let parsed = parser.parse();
+
+    // panic!("{:?}", parsed);
+
+    comput_cursore_moves(app, parsed.clone());
+
+    // panic!("{:?}", app.vstdout);
+
+    new_construct_text(app)
+}
+
+fn write_char(app: &mut App, char: Char) {
+    app.vstdout[app.vc.1 as usize][app.vc.0 as usize] = char;
+    app.vc.0 += 1;
+}
+
+fn comput_cursore_moves<'a>(app: &mut App, input: Vec<Char>) {
+    for char in input {
+        match char {
+            Char::Char(char) => {
+                if char == '\n' {
+                    if app.vc.1 == app.vstdout.len() as u16 - 1 {
+                        // todo fix this. should probubly scroll everything up by one row?
+                        // text.push(Vec::new());
+                    } else {
+                        app.vc.1 += 1;
+                        app.vc.0 = 0;
+                    }
+                } else {
+                    write_char(app, Char::Char(char))
+                }
+            }
+            Char::Ansi(ansi) => {
+                match ansi {
+                    Ansi::CursorUp(amount) => {
+                        let amount = amount.parse().unwrap();
+                        if app.vc.1 >= amount {
+                            app.vc.1 -= amount
+                        } else {
+                            app.vc.1 = 0;
+                        }
+                    }
+                    // Ansi::CursorUp(v) => {}
+                    // Ansi::CursonDown(v) => {}
+                    // Ansi::CursorForward(v) => {}
+                    Ansi::CursorBack(amount) => {
+                        let amount = amount.parse().unwrap();
+                        if app.vc.0 >= amount {
+                            app.vc.0 -= amount
+                        } else {
+                            app.vc.0 = 0;
+                        }
+                    }
+                    // Ansi::CursorNextLine(v) => {}
+                    // Ansi::CursorPreviousLine(v) => {}
+                    // Ansi::CursorHorizontalAbsolute(v) => {}
+                    // Ansi::CursorPosition((n, m)) => {}
+                    Ansi::EraseInDisplay(_) => {}
+                    // Ansi::EraseInLine(v) => {}
+                    // Ansi::ScrollUp(v) => {}
+                    // Ansi::ScrollDown(v) => {}
+                    // Ansi::HorizontalVerticalPosition((n, m)) => {}
+                    Ansi::Sgr(sgr) => {
+                        // text.last_mut().unwrap().push(Char::Ansi(Ansi::Sgr(sgr)))
+                        write_char(app, Char::Ansi(Ansi::Sgr(sgr)));
+                    }
+                    _ => {}
+                }
+            }
+            Char::Empty => {}
+        }
+    }
+}
+
+fn new_construct_text<'a>(app: &mut App) -> Text<'a> {
+    let mut input = Vec::new();
+
+    let mut tmp = Vec::new();
+
+    let mut found = 0;
+    let mut idx = 0;
+    for line in app.vstdout.clone() {
+        for char in line {
+            if char != Char::Empty {
+                found = idx;
+                tmp.push(char.clone());
+            }
+            input.push(char);
+        }
+        input.push(Char::Char('\n'));
+        idx += 1;
+    }
+
+
+    // panic!("{:?}", tmp);
+
+    let mut spans = Vec::new();
+    let mut span = Vec::new();
+    let mut current_text = String::new();
+    let mut style = Style::default();
+    for char in input {
+        match char {
+            Char::Char(char) => {
+                if char == '\n' && found >= 0 {
+                    span.push(Span::styled(current_text.clone(), style));
+                    spans.push(Spans::from(span.clone()));
+                    span.clear();
+                    current_text.clear();
+                    found -= 1;
+                }
+                current_text.push(char);
+            }
+            Char::Ansi(ansi) => {
+                match ansi {
+                    // Ansi::CursorUp(v) => {}
+                    // Ansi::CursorUp(v) => {}
+                    // Ansi::CursonDown(v) => {}
+                    // Ansi::CursorForward(v) => {}
+                    // Ansi::CursorBack(v) => {}
+                    // Ansi::CursorNextLine(v) => {}
+                    // Ansi::CursorPreviousLine(v) => {}
+                    // Ansi::CursorHorizontalAbsolute(v) => {}
+                    // Ansi::CursorPosition((n, m)) => {}
+                    Ansi::EraseInDisplay(v) => {
+                        match v.as_str() {
+                            // clear from cursor to end of screen
+                            "0" => {
+                            }
+                            // clear entire screen
+                            "2" => {
+                                app.content = Text::from("");
+                                app.scroll = (0, 0)
+                            }
+                            // clear entire screen and all lines saved in  scrollback buffer
+                            "3" => {}
+                            _ => {}
+                        }
+                    }
+                    // Ansi::EraseInLine(v) => {}
+                    // Ansi::ScrollUp(v) => {}
+                    // Ansi::ScrollDown(v) => {}
+                    // Ansi::HorizontalVerticalPosition((n, m)) => {}
+                    Ansi::Sgr(sgr) => {
+                        if !current_text.is_empty() {
+                            span.push(Span::styled(current_text.clone(), style));
+                        }
+                        // text.extend(Text::styled(current_text.clone(), style));
+                        current_text.clear();
+                        parse_sgr(sgr, &mut style);
+                    }
+                    _ => {}
+                }
+            }
+            Char::Empty => {}
+        }
+    }
+    if !current_text.is_empty() {
+        span.push(Span::styled(current_text.clone(), style));
+        spans.push(Spans::from(span.clone()));
+    }
+    Text::from(spans)
 }
 
 fn construct_text<'a>(app: &mut App, input: Vec<Char>) -> Text<'a> {
@@ -28,7 +192,7 @@ fn construct_text<'a>(app: &mut App, input: Vec<Char>) -> Text<'a> {
         match char {
             Char::Char(char) => {
                 if char == '\n' {
-                    span.push(Span::styled(current_text.clone(), style.clone()));
+                    span.push(Span::styled(current_text.clone(), style));
                     spans.push(Spans::from(span.clone()));
                     span.clear();
                     current_text.clear();
@@ -65,126 +229,127 @@ fn construct_text<'a>(app: &mut App, input: Vec<Char>) -> Text<'a> {
                     // Ansi::ScrollUp(v) => {}
                     // Ansi::ScrollDown(v) => {}
                     // Ansi::HorizontalVerticalPosition((n, m)) => {}
-                    Ansi::SGR(sgr) => {
-                        if current_text.len() != 0 {
-                            span.push(Span::styled(current_text.clone(), style.clone()));
+                    Ansi::Sgr(sgr) => {
+                        if !current_text.is_empty() {
+                            span.push(Span::styled(current_text.clone(), style));
                         }
-                        // text.extend(Text::styled(current_text.clone(), style.clone()));
+                        // text.extend(Text::styled(current_text.clone(), style));
                         current_text.clear();
                         parse_sgr(sgr, &mut style);
                     }
                     _ => {}
+                }
             }
-            }
+            Char::Empty => {}
         }
     }
-    if current_text.len() != 0 {
-        span.push(Span::styled(current_text.clone(), style.clone()));
+    if !current_text.is_empty() {
+        span.push(Span::styled(current_text.clone(), style));
         spans.push(Spans::from(span.clone()));
     }
     Text::from(spans)
 }
 
-fn parse_sgr(sgrs: Vec<SGR>, style: &mut Style) -> Style {
+fn parse_sgr(sgrs: Vec<Sgr>, style: &mut Style) -> Style {
     for sgr in sgrs {
         match sgr {
-            SGR::Reset => {
+            Sgr::Reset => {
                 *style = Style::default();
                 // panic!("{:?}", style);
             }
-            SGR::Bold => {
+            Sgr::Bold => {
                 *style = style.patch(Style::default().add_modifier(Modifier::BOLD));
             }
-            SGR::Dim => {
+            Sgr::Dim => {
                 *style = style.patch(Style::default().add_modifier(Modifier::DIM));
             }
-            SGR::Italic => {
+            Sgr::Italic => {
                 *style = style.patch(Style::default().add_modifier(Modifier::ITALIC));
             }
-            SGR::Underline => {
+            Sgr::Underline => {
                 *style = style.patch(Style::default().add_modifier(Modifier::UNDERLINED));
             }
-            SGR::SlowBlink => {
+            Sgr::SlowBlink => {
                 *style = style.patch(Style::default().add_modifier(Modifier::SLOW_BLINK));
             }
-            SGR::RapidBlink => {
+            Sgr::RapidBlink => {
                 *style = style.patch(Style::default().add_modifier(Modifier::RAPID_BLINK));
             }
-            SGR::Invert => {
+            Sgr::Invert => {
                 *style = style.patch(Style::default().add_modifier(Modifier::REVERSED));
             }
-            SGR::Hide => {
+            Sgr::Hide => {
                 *style = style.patch(Style::default().add_modifier(Modifier::HIDDEN));
             }
-            SGR::Strike => {
+            Sgr::Strike => {
                 *style = style.patch(Style::default().add_modifier(Modifier::CROSSED_OUT));
             }
-            SGR::PrimaryFont => {
+            Sgr::PrimaryFont => {
             }
-            SGR::AltFont(_u8) => {}
-            SGR::Gothic => {}
-            SGR::DoublyUnderlined => {}
-            SGR::NormalIntensity => {}
-            SGR::NotItalicOrBlackletter => {}
-            SGR::NotUnderlined => {
+            Sgr::AltFont(_u8) => {}
+            Sgr::Gothic => {}
+            Sgr::DoublyUnderlined => {}
+            Sgr::NormalIntensity => {}
+            Sgr::NotItalicOrBlackletter => {}
+            Sgr::NotUnderlined => {
                 *style = style.patch(Style::default().remove_modifier(Modifier::UNDERLINED));
             }
-            SGR::NotBlinking => {
+            Sgr::NotBlinking => {
                 *style = style.patch(Style::default().remove_modifier(Modifier::RAPID_BLINK).remove_modifier(Modifier::SLOW_BLINK));
             }
-            SGR::ProportionalSpacing => {}
-            SGR::NotInvert => {
+            Sgr::ProportionalSpacing => {}
+            Sgr::NotInvert => {
                 *style = style.patch(Style::default().remove_modifier(Modifier::REVERSED));
             }
-            SGR::NotHidden => {
+            Sgr::NotHidden => {
                 *style = style.patch(Style::default().remove_modifier(Modifier::HIDDEN));
             }
-            SGR::NotStrike => {
+            Sgr::NotStrike => {
                 *style = style.patch(Style::default().remove_modifier(Modifier::CROSSED_OUT));
             }
-            SGR::SetForeground7(u8) => {
+            Sgr::SetForeground7(u8) => {
                 *style = style.patch(Style::default().fg(get_color_idx(u8)));
             }
-            SGR::SetForeground(color) => {
+            Sgr::SetForeground(color) => {
                 match color {
                     Color::N(_) => {}
-                    Color::RGB(rgb) => {
+                    Color::Rgb(rgb) => {
                         style.patch(Style::default().fg(style::Color::Rgb(rgb.r, rgb.g, rgb.b)));
                     }
                 }
             }
-            SGR::DefaultForeground => {
+            Sgr::DefaultForeground => {
                 *style = style.patch(Style::default().fg(style::Color::Reset));
             }
-            SGR::SetBackground7(u8) => {
+            Sgr::SetBackground7(u8) => {
                 *style = style.patch(Style::default().bg(get_color_idx(u8)));
             }
-            SGR::SetBackground(color) => {
+            Sgr::SetBackground(color) => {
                 match color {
                     Color::N(_) => {}
-                    Color::RGB(rgb) => {
+                    Color::Rgb(rgb) => {
                         *style = style.patch(Style::default().bg(style::Color::Rgb(rgb.r, rgb.g, rgb.b)));
                     }
                 }
             }
-            SGR::DefaultBackground => {
+            Sgr::DefaultBackground => {
                 *style = style.patch(Style::default().bg(style::Color::Reset));
             }
-            SGR::DisableProportionalSpacing => {}
-            SGR::Framed => {}
-            SGR::Encircled => {}
-            SGR::Overlined => {}
-            SGR::NotFramedOrEncircled => {}
-            SGR::NotOverlined => {}
-            SGR::SetUnderline(_color) => {}
-            SGR::DefaultUnderline => {}
+            Sgr::DisableProportionalSpacing => {}
+            Sgr::Framed => {}
+            Sgr::Encircled => {}
+            Sgr::Overlined => {}
+            Sgr::NotFramedOrEncircled => {}
+            Sgr::NotOverlined => {}
+            Sgr::SetUnderline(_color) => {}
+            Sgr::DefaultUnderline => {}
 
             // todo bright forground and background are not actualy bright there just the
             // normal 7 color
-            SGR::SetBrightForground7(u8) => {
+            Sgr::SetBrightForground7(u8) => {
                 *style = style.patch(Style::default().fg(get_color_idx(u8)));
             }
-            SGR::SetBrightBackground7(u8) => {
+            Sgr::SetBrightBackground7(u8) => {
                 *style = style.patch(Style::default().bg(get_color_idx(u8)));
             }
         }
@@ -205,16 +370,16 @@ fn get_color_idx(idx: u8) -> style::Color {
     }
 }
 
-#[allow(non_camel_case_types)]
-struct ANSI_Parser {
+struct AnsiParser {
     content: Vec<u8>,
     pos: usize,
 }
 
-#[derive(Debug)]
-enum Char {
+#[derive(Debug, Clone, PartialEq)]
+pub enum Char {
     Ansi(Ansi),
     Char(char),
+    Empty,
 }
 
 impl From<u8> for Char {
@@ -223,7 +388,7 @@ impl From<u8> for Char {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 enum Ansi {
     CursorUp(String),
     CursonDown(String),
@@ -238,14 +403,14 @@ enum Ansi {
     ScrollUp(String),
     ScrollDown(String),
     HorizontalVerticalPosition((String, String)),
-    SGR(Vec<SGR>),
+    Sgr(Vec<Sgr>),
 }
 
 /// ESC args for SGR m
 /// [01;32m"some string"[0m
 /// results in "some string" being green
-#[derive(Debug)]
-enum SGR {
+#[derive(Debug, Clone, PartialEq)]
+enum Sgr {
     Reset,
     Bold,
     Dim,
@@ -298,13 +463,13 @@ enum SGR {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 enum Color {
     N(u8),
-    RGB(RgbColor),
+    Rgb(RgbColor),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 struct RgbColor {
     r: u8,
     g: u8,
@@ -367,7 +532,7 @@ fn parse_two_arg(args: Vec<u8>) -> (String, String) {
 }
 
 
-impl ANSI_Parser {
+impl AnsiParser {
     /// should return a Vec<Span>?
     fn parse(mut self) -> Vec<Char> {
         let mut ret = Vec::new();
@@ -404,34 +569,34 @@ impl ANSI_Parser {
 
         // Moves the cursor n (default 1) cells in the given direction. If the 
         // cursor is already at the edge of the screen, this has no effect.
-        if next == 'A' as u8 { // cursor up
+        if next == b'A' { // cursor up
             Char::Ansi(Ansi::CursorUp(parse_one_arg(args)))
-        } else if next == 'B' as u8 { // cursor down
+        } else if next == b'B' { // cursor down
             Char::Ansi(Ansi::CursonDown(parse_one_arg(args)))
-        } else if next == 'C' as u8 { // cursor forward
+        } else if next == b'C' { // cursor forward
             Char::Ansi(Ansi::CursorForward(parse_one_arg(args)))
-        } else if next == 'D' as u8 { // cursor back
+        } else if next == b'D' { // cursor back
             Char::Ansi(Ansi::CursorBack(parse_one_arg(args)))
         }
         // Moves cursor to beginning of the line n (default 1) lines down.
         // (not ANSI.SYS)
-        else if next == 'E' as u8 {
+        else if next == b'E' {
             Char::Ansi(Ansi::CursorNextLine(parse_one_arg(args)))
         }
         // Moves cursor to beginning of the line n (default 1) lines up. 
         // (not ANSI.SYS
-        else if next == 'F' as u8 {
+        else if next == b'F' {
             Char::Ansi(Ansi::CursorPreviousLine(parse_one_arg(args)))
         }
         // Moves the cursor to column n (default 1). (not ANSI.SYS)
-        else if next == 'G' as u8 {
+        else if next == b'G' {
             Char::Ansi(Ansi::CursorHorizontalAbsolute(parse_one_arg(args)))
         }
         // Moves the cursor to row n, column m. The values are 1-based, and 
         // default to 1 (top left corner) if omitted. A sequence such as CSI 
         // ;5H is a synonym for CSI 1;5H as well as CSI 17;H is the same as CSI
         // 17H and CSI 17;1H
-        else if next == 'H' as u8 {
+        else if next == b'H' {
             Char::Ansi(Ansi::CursorPosition(parse_two_arg(args)))
         }
         // Clears part of the screen. If n is 0 (or missing), clear from cursor
@@ -440,35 +605,35 @@ impl ANSI_Parser {
         // left on DOS ANSI.SYS). If n is 3, clear entire screen and delete all
         // lines saved in the scrollback buffer (this feature was added for 
         // xterm and is supported by other terminal applications).
-        else if next == 'J' as u8 {
+        else if next == b'J' {
             Char::Ansi(Ansi::EraseInDisplay(parse_one_arg(args)))
         }
         // Erases part of the line. If n is 0 (or missing), clear from cursor 
         // to the end of the line. If n is 1, clear from cursor to beginning 
         // of the line. If n is 2, clear entire line. Cursor position does not
         // change.
-        else if next == 'K' as u8 {
+        else if next == b'K' {
             Char::Ansi(Ansi::EraseInLine(parse_one_arg(args)))
         }
         // Scroll whole page up by n (default 1) lines. New lines are added at 
         // the bottom. (not ANSI.SYS)
-        else if next == 'S' as u8 {
+        else if next == b'S' {
             Char::Ansi(Ansi::ScrollUp(parse_one_arg(args)))
         }
         // Scroll whole page down by n (default 1) lines. New lines are added 
         // at the top. (not ANSI.SYS)
-        else if next == 'T' as u8 {
+        else if next == b'T' {
             Char::Ansi(Ansi::ScrollDown(parse_one_arg(args)))
         }
         // Same as cursor position, but counts as a format effector function (like CR
         // or LF) rather than an editor function (like CUD or CNL). This can 
         // lead to different handling in certain terminal modes
-        else if next == 'f' as u8 {
+        else if next == b'f' {
             Char::Ansi(Ansi::HorizontalVerticalPosition(parse_two_arg(args)))
         }
         // Sets colors and style of the characters following this code
-        else if next == 'm' as u8 {
-            Char::Ansi(Ansi::SGR(self.parse_sgr(args).unwrap()))
+        else if next == b'm' {
+            Char::Ansi(Ansi::Sgr(self.parse_sgr(args).unwrap()))
         } else {
             Char::Char(next as char)
         }
@@ -479,7 +644,7 @@ impl ANSI_Parser {
         // maybe something to experiment with
     }
 
-    fn parse_sgr(&mut self, args: Vec<u8>) -> Result<Vec<SGR>, anyhow::Error> {
+    fn parse_sgr(&mut self, args: Vec<u8>) -> Result<Vec<Sgr>, anyhow::Error> {
         // The control sequence CSI n m, named Select Graphic Rendition (SGR), 
         // sets display attributes. Several attributes can be set in the same 
         // sequence, separated by semicolons. Each display attribute remains
@@ -493,146 +658,157 @@ impl ANSI_Parser {
         let mut color_push_type = ColorPushType::Forground;
         let mut rgb: Vec<u8> = Vec::new();
 
+        for arg in vec_to_string(args.clone()).split(';') {
 
-
-        for arg in vec_to_string(args).split(";") {
+            // println!("rgb len {}", rgb.len());
 
 
             // todo find a better way to trim leading 0s without removing valid 0s
-            let mut arg = arg.trim().trim_start_matches("0");
-            if arg.len() == 0 {
+            let mut arg = arg.trim().trim_start_matches('0');
+            if arg.is_empty() {
                 arg = "0"
             }
             if next_color_type_select {
                 in_color = true;
                 next_color_type_select = false;
                 if arg == "5" {
-                    color_type = ColorType::Rgb;
+                    color_type = ColorType::N;
                 } else if arg == "2" {
                     color_type = ColorType::Rgb;
                 } else {
+                    // todo maybe somekind of developer mode that would show errors for this kind
+                    // of stuff? till this probubly shouldn't panic.
+                    panic!("invlaid color type {}", arg)
                     // invalid error
                 }
+                continue;
             }
             if in_color {
                 match color_type {
                     ColorType::N => {
                         let color = Color::N(arg.parse().unwrap());
                         match color_push_type {
-                            ColorPushType::Forground => ret.push(SGR::SetForeground(color)),
-                            ColorPushType::Background => ret.push(SGR::SetBackground(color))
+                            ColorPushType::Forground => ret.push(Sgr::SetForeground(color)),
+                            ColorPushType::Background => ret.push(Sgr::SetBackground(color))
                         }
                         in_color = false;
                     }
                     ColorType::Rgb => {
-                        if rgb.len() < 3 {
-                            rgb.push(arg.parse().unwrap())
+                        if rgb.len() < 2 {
+                            rgb.push(arg.parse().unwrap());
+                            if arg == "70" {
+                                panic!("{:?} {:?}", vec_to_string(args).split(';').collect::<Vec<_>>(), rgb);
+                            }
                         } else {
-                            let color = Color::RGB(RgbColor::try_from(rgb.clone()).unwrap());
+                            rgb.push(arg.parse().unwrap());
+                            println!("pushing a color {:?}", rgb);
+                            let color = Color::Rgb(RgbColor::try_from(rgb.clone()).unwrap());
+                            // panic!("color is now {:?}", color);
                             match color_push_type {
-                                ColorPushType::Forground => ret.push(SGR::SetForeground(color)),
-                                ColorPushType::Background => ret.push(SGR::SetBackground(color))
+                                ColorPushType::Forground => ret.push(Sgr::SetForeground(color)),
+                                ColorPushType::Background => ret.push(Sgr::SetBackground(color))
                             }
                             in_color = false;
+                            // rgb.clear();
                         }
                     }
                 }
+                continue;
             }
             match arg {
                 "0" => {
-                    ret.push(SGR::Reset)
+                    ret.push(Sgr::Reset)
                 }
                 "1" => {
-                    ret.push(SGR::Bold)
+                    ret.push(Sgr::Bold)
                 }
                 "2" => {
-                    ret.push(SGR::Dim)
+                    ret.push(Sgr::Dim)
                 }
                 "3" => {
-                    ret.push(SGR::Italic)
+                    ret.push(Sgr::Italic)
                 }
                 "4" => {
-                    ret.push(SGR::Underline)
+                    ret.push(Sgr::Underline)
                 }
                 "5" => {
-                    ret.push(SGR::SlowBlink)
+                    ret.push(Sgr::SlowBlink)
                 }
                 "6" => {
-                    ret.push(SGR::RapidBlink)
+                    ret.push(Sgr::RapidBlink)
                 }
                 "7" => {
-                    ret.push(SGR::Invert)
+                    ret.push(Sgr::Invert)
                 }
                 "8" => {
-                    ret.push(SGR::Hide)
+                    ret.push(Sgr::Hide)
                 }
                 "9" => {
-                    ret.push(SGR::Strike)
+                    ret.push(Sgr::Strike)
                 }
                 "10" => {
-                    ret.push(SGR::PrimaryFont)
+                    ret.push(Sgr::PrimaryFont)
                 }
                 "11" => {
-                    ret.push(SGR::AltFont(1))
+                    ret.push(Sgr::AltFont(1))
                 }
                 "12" => {
-                    ret.push(SGR::AltFont(2))
+                    ret.push(Sgr::AltFont(2))
                 }
                 "13" => {
-                    ret.push(SGR::AltFont(3))
+                    ret.push(Sgr::AltFont(3))
                 }
                 "14" => {
-                    ret.push(SGR::AltFont(4))
+                    ret.push(Sgr::AltFont(4))
                 }
                 "15" => {
-                    ret.push(SGR::AltFont(5))
+                    ret.push(Sgr::AltFont(5))
                 }
                 "16" => {
-                    ret.push(SGR::AltFont(6))
+                    ret.push(Sgr::AltFont(6))
                 }
                 "17" => {
-                    ret.push(SGR::AltFont(7))
+                    ret.push(Sgr::AltFont(7))
                 }
                 "18" => {
-                    ret.push(SGR::AltFont(8))
+                    ret.push(Sgr::AltFont(8))
                 }
                 "19" => {
-                    ret.push(SGR::AltFont(9))
+                    ret.push(Sgr::AltFont(9))
                 }
                 "20" => {
-                    ret.push(SGR::Gothic)
+                    ret.push(Sgr::Gothic)
                 }
                 "21" => {
-                    ret.push(SGR::DoublyUnderlined)
+                    ret.push(Sgr::DoublyUnderlined)
                 }
                 "22" => {
-                    ret.push(SGR::NormalIntensity)
+                    ret.push(Sgr::NormalIntensity)
                 }
                 "23" => {
-                    ret.push(SGR::NotItalicOrBlackletter)
+                    ret.push(Sgr::NotItalicOrBlackletter)
                 }
                 "24" => {
-                    ret.push(SGR::NotUnderlined)
+                    ret.push(Sgr::NotUnderlined)
                 }
                 "25" => {
-                    ret.push(SGR::NotBlinking)
+                    ret.push(Sgr::NotBlinking)
                 }
                 "26" => {
-                    ret.push(SGR::ProportionalSpacing)
+                    ret.push(Sgr::ProportionalSpacing)
                 }
                 "27" => {
-                    ret.push(SGR::NotInvert)
+                    ret.push(Sgr::NotInvert)
                 }
                 "28" => {
-                    ret.push(SGR::NotHidden)
+                    ret.push(Sgr::NotHidden)
                 }
                 "29" => {
-                    ret.push(SGR::NotStrike)
+                    ret.push(Sgr::NotStrike)
                 }
-                "30"|"31"|"32"|"33"|"34"|"35"|"36"|"37" =>
-                /* v if v.parse::<u8>().unwrap() > 30 && v.parse::<u8>().unwrap() <= 37 => */ {
+                "30"|"31"|"32"|"33"|"34"|"35"|"36"|"37" =>{
                     // 29 so its a range from 1 to 8, i think thats the best way to do it...
-                    ret.push(SGR::SetForeground7(arg.parse::<u8>().unwrap() - 30))
+                    ret.push(Sgr::SetForeground7(arg.parse::<u8>().unwrap() - 30))
                 }
                 "38" => {
                     next_color_type_select = true;
@@ -640,49 +816,50 @@ impl ANSI_Parser {
                     // ret.push(SGR::SetForeground(Color::N(0)))
                 }
                 "39" => {
-                    ret.push(SGR::DefaultForeground)
+                    ret.push(Sgr::DefaultForeground)
                 }
-                "40"|"41"|"42"|"43"|"44"|"45"|"46"|"47" =>
-                /* v if v.parse::<u8>().unwrap() > 40 && v.parse::<u8>().unwrap() <= 47 =>  */{
-                    ret.push(SGR::SetBackground7(arg.parse::<u8>().unwrap() - 40))
+                "40"|"41"|"42"|"43"|"44"|"45"|"46"|"47" =>{
+                    // println!("4x");
+                    ret.push(Sgr::SetBackground7(arg.parse::<u8>().unwrap() - 40))
                 }
                 "48" => {
+                    // println!("48");
                     next_color_type_select = true;
                     color_push_type = ColorPushType::Background;
                     // ret.push(SGR::SetBackground(Color::N(0)))
                 }
                 "49" => {
-                    ret.push(SGR::DefaultBackground)
+                    ret.push(Sgr::DefaultBackground)
                 }
                 "50" => {
-                    ret.push(SGR::DisableProportionalSpacing)
+                    ret.push(Sgr::DisableProportionalSpacing)
                 }
                 "51" => {
-                    ret.push(SGR::Framed)
+                    ret.push(Sgr::Framed)
                 }
                 "52" => {
-                    ret.push(SGR::Encircled)
+                    ret.push(Sgr::Encircled)
                 }
                 "53" => {
-                    ret.push(SGR::Overlined)
+                    ret.push(Sgr::Overlined)
                 }
                 "54" => {
-                    ret.push(SGR::NotFramedOrEncircled)
+                    ret.push(Sgr::NotFramedOrEncircled)
                 }
                 "55" => {
-                    ret.push(SGR::NotOverlined)
+                    ret.push(Sgr::NotOverlined)
                 }
                 "56" => {
-                    ret.push(SGR::SetUnderline(Color::N(0)))
+                    ret.push(Sgr::SetUnderline(Color::N(0)))
                 }
                 "57" => {
-                    ret.push(SGR::DefaultUnderline)
+                    ret.push(Sgr::DefaultUnderline)
                 }
                 "90"|"91"|"92"|"93"|"94"|"95"|"96"|"97" => {
-                    ret.push(SGR::SetBrightForground7(arg.parse::<u8>().unwrap() - 90))
+                    ret.push(Sgr::SetBrightForground7(arg.parse::<u8>().unwrap() - 90))
                 }
                 "100"|"101"|"102"|"103"|"104"|"105"|"106"|"107" => {
-                    ret.push(SGR::SetBrightBackground7(arg.parse::<u8>().unwrap() - 100))
+                    ret.push(Sgr::SetBrightBackground7(arg.parse::<u8>().unwrap() - 100))
                 }
                 _ => {
                     // error?
@@ -719,13 +896,13 @@ impl ANSI_Parser {
 
     fn consume_next(&mut self) -> u8 {
         self.pos += 1;
-        return self.content[self.pos - 1];
+        self.content[self.pos - 1]
     }
 
     fn eof(&self) -> bool {
         if self.pos >= self.content.len() {
             return true;
         }
-        return false;
+        false
     }
 }

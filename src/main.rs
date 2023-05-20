@@ -1,3 +1,9 @@
+
+
+// posix spec.
+// https://pubs.opengroup.org/onlinepubs/9699919799/
+
+
 use app::{run_app, App, reset_terminal};
 use shell::run_command;
 use std::{error::Error, io, panic::set_hook};

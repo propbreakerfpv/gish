@@ -1,32 +1,28 @@
 use tui::{backend::Backend, Frame, text::{Text, Span, Spans}, widgets::{Block, Paragraph, Borders, Clear}, style::{Style, Color}, layout::{Rect, Layout, Direction, Constraint}};
-use crate::{app::{App, LuaApp, AppMode }, lua::{call_internal, run_ui_update}};
+use crate::{app::{App, LuaApp, AppMode }, lua::{call_internal, run_ui_update, get_prompt}};
 
 
 
 pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
-    let content: LuaApp = match call_internal(&app, "on_tick") {
-        Some(v) => {
-            match v {
-                Ok(v) => v,
-                Err(e) => e.to_string(),
-            }
-        }
-        None => String::new(),
-    };
-
-    if content.len() > 0 {
-        app.content
-            .extend(Text::from(Span::from(String::from(content))));
-    }
+    // let content: LuaApp = match call_internal(app, "on_tick") {
+    //     Some(v) => {
+    //         match v {
+    //             Ok(v) => v,
+    //             Err(e) => e.to_string(),
+    //         }
+    //     }
+    //     None => String::new(),
+    // };
+    //
+    // if !content.is_empty() {
+    //     app.println(content);
+    // }
 
     let size = f.size();
 
-    let block = Block::default()
-        .style(Style::default().bg(Color::Black));
+    let block = Block::default().style(Style::default().bg(Color::Black));
 
-    let style = Style::default();
-    let mut text = app.content.clone();
 
     if app.content.height() as u16 > size.height - 2 {
         app.scroll = (
@@ -35,18 +31,27 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             );
     }
 
-    let mut prompt = run_ui_update(&app, "prompt");
-    let prompt_len = prompt.iter().fold(0, |acc, x| acc + x.width());
+    let mut prompt = get_prompt(app);
+    // panic!("{}", prompt);
     app.prompt = prompt.clone();
 
-    prompt.push(Span::from(app.cmd_input.clone()));
-    text.extend(Text::from(Spans::from(prompt)));
+    prompt.push_str(app.cmd_input.clone().as_str());
+    if let Some(char) = app.cmd_input.chars().last() {
+        if app.prompt_update {
+            app.println(char);
+            app.prompt_update = false;
+        }
+    }
 
-    text.patch_style(style);
+    let text = app.content.clone();
 
     let main = Paragraph::new(text.clone())
         .block(block)
-        .scroll(app.scroll.clone());
+        // messes up cursore position so i think i will have to handle wraping myself?
+        // usefull for debuging though. lol
+        // .wrap(Wrap { trim: false })
+        .scroll(app.scroll);
+        
 
     f.render_widget(main, size);
 
@@ -59,18 +64,20 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             f.render_widget(Clear, area); //this clears out the background
             f.render_widget(search_bar, area);
             f.set_cursor(area.x + app.search_input.len() as u16 + 1, area.y + 1);
+            app.vc = (area.x + app.search_input.len() as u16 + 1, area.y + 1)
         }
         AppMode::Normal => {
+            // let cursor_pos_x = (app.prompt_len + app.cmd_input.len()) as u16;
+            // let cursor_pos_y = app.content.height() as u16 - app.scroll.0;
 
-            f.set_cursor(
-                (prompt_len + app.cmd_input.len()) as u16,
-                app.content.height() as u16 - app.scroll.0/*  * (size.height / 2) */
-                );
+            // f.set_cursor(cursor_pos_x, cursor_pos_y);
+            f.set_cursor(app.vc.0, app.vc.1);
+            // app.vc = (cursor_pos_x, cursor_pos_y);
         }
         AppMode::Command => {}
     }
 
-    let bar_text = run_ui_update(&app, "render_status_bar") ;
+    let bar_text = run_ui_update(app, "render_status_bar") ;
 
     let status_bar = Paragraph::new(Text::from(Spans::from(bar_text)));
     let area = Rect::new(0, size.height - 1, size.width, 1);
