@@ -3,6 +3,8 @@
 // https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
 
 
+mod new;
+
 
 
 use anyhow::{anyhow, Result};
@@ -57,43 +59,160 @@ fn comput_cursore_moves<'a>(app: &mut App, input: Vec<Char>) {
                 }
             }
             Char::Ansi(ansi) => {
+                // print!("{:?}", ansi);
                 match ansi {
                     Ansi::CursorUp(amount) => {
-                        let amount = amount.parse().unwrap();
-                        if app.vc.1 >= amount {
-                            app.vc.1 -= amount
+                        let mut amount: u64 = amount.parse().unwrap();
+                        // some applications set this to 9999999 witch will overflow a u16 so we
+                        // prevent that here. there is probubly a better way of doing this but 
+                        // this works for now
+                        if amount > u16::MAX as u64 {
+                            amount = u16::MAX as u64;
+                        }
+                        if app.vstdout[0].len() > amount as usize {
+                            app.vc.1 -= amount as u16
                         } else {
                             app.vc.1 = 0;
                         }
                     }
-                    // Ansi::CursorUp(v) => {}
-                    // Ansi::CursonDown(v) => {}
-                    // Ansi::CursorForward(v) => {}
+                    Ansi::CursonDown(amount) => {
+                        let mut amount: u64 = amount.parse().unwrap();
+                        if amount > u16::MAX as u64 {
+                            amount = u16::MAX as u64;
+                        }
+                        if app.vstdout[0].len() > amount as usize {
+                            app.vc.1 += amount as u16
+                        } else {
+                            // todo. set this to be the hight of vstdout insted of 0.
+                            // aslo do it on all the cases below this
+                            app.vc.1 = 0;
+                        }
+                    }
+                    Ansi::CursorForward(amount) => {
+                        let mut amount: u64 = amount.parse().unwrap();
+                        if amount > u16::MAX as u64 {
+                            amount = u16::MAX as u64;
+                        }
+                        if app.vstdout[0].len() > amount as usize {
+                            app.vc.0 += amount as u16;
+                        } else {
+                            print!("forward 0");
+                            app.vc.0 = 0;
+                        }
+                    }
                     Ansi::CursorBack(amount) => {
-                        let amount = amount.parse().unwrap();
-                        if app.vc.0 >= amount {
-                            app.vc.0 -= amount
+                        let mut amount: u64 = amount.parse().unwrap();
+                        if amount > u16::MAX as u64 {
+                            amount = u16::MAX as u64;
+                        }
+                        if app.vstdout[0].len() > amount as usize {
+                            app.vc.0 -= amount as u16
                         } else {
                             app.vc.0 = 0;
                         }
                     }
-                    // Ansi::CursorNextLine(v) => {}
-                    // Ansi::CursorPreviousLine(v) => {}
-                    // Ansi::CursorHorizontalAbsolute(v) => {}
-                    // Ansi::CursorPosition((n, m)) => {}
-                    Ansi::EraseInDisplay(_) => {}
-                    // Ansi::EraseInLine(v) => {}
-                    // Ansi::ScrollUp(v) => {}
-                    // Ansi::ScrollDown(v) => {}
-                    // Ansi::HorizontalVerticalPosition((n, m)) => {}
+                    Ansi::CursorNextLine(amount) => {
+                        let mut amount: u64 = amount.parse().unwrap();
+                        if amount > u16::MAX as u64 {
+                            amount = u16::MAX as u64;
+                        }
+                        if app.vstdout[0].len() > amount as usize {
+                            app.vc.1 += amount as u16;
+                            app.vc.0 = 0;
+                        } else {
+                            app.vc.1 = 0;
+                            app.vc.0 = 0;
+                        }
+                    }
+                    Ansi::CursorPreviousLine(amount) => {
+                        let mut amount: u64 = amount.parse().unwrap();
+                        if amount > u16::MAX as u64 {
+                            amount = u16::MAX as u64;
+                        }
+                        if app.vstdout[0].len() > amount as usize {
+                            app.vc.1 -= amount as u16;
+                            app.vc.0 = 0;
+                        } else {
+                            app.vc.1 = 0;
+                            app.vc.0 = 0;
+                        }
+                    }
+                    Ansi::CursorHorizontalAbsolute(amount) => {
+                        let mut amount: u64 = amount.parse().unwrap();
+                        if amount > u16::MAX as u64 {
+                            amount = u16::MAX as u64;
+                        }
+                        // todo. make this not panic if vstdout is empty
+                        if (amount as usize) < app.vstdout[0].len() {
+                            app.vc.0 = amount as u16;
+                        } else {
+                            app.vc.0 = app.vstdout[0].len() as u16;
+                        }
+                    }
+                    Ansi::CursorPosition((n, m)) => {
+                        let mut n: u64 = n.parse().unwrap();
+                        if n > u16::MAX as u64 {
+                            n = u16::MAX as u64;
+                        }
+                        let mut m: u64 = m.parse().unwrap();
+                        if m > u16::MAX as u64 {
+                            m = u16::MAX as u64;
+                        }
+                        if (n as usize) < app.vstdout[0].len() {
+                            app.vc.0 = n as u16;
+                        } else {
+                            app.vc.0 = app.vstdout[0].len() as u16;
+                        }
+
+                        if (m as usize) < app.vstdout.len() {
+                            app.vc.1 = m as u16;
+                        } else {
+                            app.vc.1 = app.vstdout.len() as u16;
+                        }
+                    }
+                    Ansi::EraseInDisplay(_) => {} // dont need to handle this here. i think anyway
+                    Ansi::EraseInLine(_v) => {
+                        todo!("EraseInLine")
+                    }
+                    Ansi::ScrollUp(_v) => {
+                        todo!("scrollup")
+                    }
+                    Ansi::ScrollDown(_v) => {
+                        todo!("scrolldown")
+                    }
+                    Ansi::HorizontalVerticalPosition((n, m)) => {
+                        // todo. currently this is the same as CursorPosition. on wicipedia it says
+                        // there is a diference to do with CR and LF. make that work i guess?
+                        let mut n: u64 = n.parse().unwrap();
+                        if n > u16::MAX as u64 {
+                            n = u16::MAX as u64;
+                        }
+                        let mut m: u64 = m.parse().unwrap();
+                        if m > u16::MAX as u64 {
+                            m = u16::MAX as u64;
+                        }
+                        if (n as usize) < app.vstdout[0].len() {
+                            app.vc.0 = n as u16;
+                        } else {
+                            app.vc.0 = app.vstdout[0].len() as u16;
+                        }
+
+                        if (m as usize) < app.vstdout.len() {
+                            app.vc.1 = m as u16;
+                        } else {
+                            app.vc.1 = app.vstdout.len() as u16;
+                        }
+                    }
                     Ansi::Sgr(sgr) => {
                         // text.last_mut().unwrap().push(Char::Ansi(Ansi::Sgr(sgr)))
-                        write_char(app, Char::Ansi(Ansi::Sgr(sgr)));
+                        // write_char(app, Char::Ansi(Ansi::Sgr(sgr)));
+                        app.voutstyle.push(VStyle::try_new(Ansi::Sgr(sgr), app.vc));
                     }
-                    _ => {}
                 }
             }
-            Char::Empty => {}
+            Char::Empty => {
+                app.vc.0 += 1;
+            }
         }
     }
 }
@@ -143,6 +262,7 @@ fn new_construct_text<'a>(app: &mut App) -> Text<'a> {
                     // Ansi::CursorHorizontalAbsolute(v) => {}
                     // Ansi::CursorPosition((n, m)) => {}
                     Ansi::EraseInDisplay(v) => {
+                        app.voutstyle.clear();
                         match v.as_str() {
                             // clear from cursor to end of screen
                             "0" => {
@@ -172,7 +292,9 @@ fn new_construct_text<'a>(app: &mut App) -> Text<'a> {
                     _ => {}
                 }
             }
-            Char::Empty => {}
+            Char::Empty => {
+                current_text.push(' ');
+            }
         }
     }
     if !current_text.is_empty() {
@@ -182,72 +304,6 @@ fn new_construct_text<'a>(app: &mut App) -> Text<'a> {
     Text::from(spans)
 }
 
-fn construct_text<'a>(app: &mut App, input: Vec<Char>) -> Text<'a> {
-    let mut spans = Vec::new();
-    let mut span = Vec::new();
-    let mut current_text = String::new();
-    let mut style = Style::default();
-    for char in input {
-        match char {
-            Char::Char(char) => {
-                if char == '\n' {
-                    span.push(Span::styled(current_text.clone(), style));
-                    spans.push(Spans::from(span.clone()));
-                    span.clear();
-                    current_text.clear();
-                }
-                current_text.push(char);
-            }
-            Char::Ansi(ansi) => {
-                match ansi {
-                    // Ansi::CursorUp(v) => {}
-                    // Ansi::CursorUp(v) => {}
-                    // Ansi::CursonDown(v) => {}
-                    // Ansi::CursorForward(v) => {}
-                    // Ansi::CursorBack(v) => {}
-                    // Ansi::CursorNextLine(v) => {}
-                    // Ansi::CursorPreviousLine(v) => {}
-                    // Ansi::CursorHorizontalAbsolute(v) => {}
-                    // Ansi::CursorPosition((n, m)) => {}
-                    Ansi::EraseInDisplay(v) => {
-                        match v.as_str() {
-                            // clear from cursor to end of screen
-                            "0" => {
-                            }
-                            // clear entire screen
-                            "2" => {
-                                app.content = Text::from("");
-                                app.scroll = (0, 0)
-                            }
-                            // clear entire screen and all lines saved in  scrollback buffer
-                            "3" => {}
-                            _ => {}
-                        }
-                    }
-                    // Ansi::EraseInLine(v) => {}
-                    // Ansi::ScrollUp(v) => {}
-                    // Ansi::ScrollDown(v) => {}
-                    // Ansi::HorizontalVerticalPosition((n, m)) => {}
-                    Ansi::Sgr(sgr) => {
-                        if !current_text.is_empty() {
-                            span.push(Span::styled(current_text.clone(), style));
-                        }
-                        // text.extend(Text::styled(current_text.clone(), style));
-                        current_text.clear();
-                        parse_sgr(sgr, &mut style);
-                    }
-                    _ => {}
-                }
-            }
-            Char::Empty => {}
-        }
-    }
-    if !current_text.is_empty() {
-        span.push(Span::styled(current_text.clone(), style));
-        spans.push(Spans::from(span.clone()));
-    }
-    Text::from(spans)
-}
 
 fn parse_sgr(sgrs: Vec<Sgr>, style: &mut Style) -> Style {
     for sgr in sgrs {
@@ -379,6 +435,28 @@ struct AnsiParser {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct VStyle {
+    pos: (u16, u16),
+    style: Style,
+}
+
+impl VStyle {
+    fn try_new(ansi: Ansi, pos: (u16, u16)) -> VStyle {
+        match ansi {
+            Ansi::Sgr(vsgr) => {
+                VStyle {
+                    pos,
+                    style: parse_sgr(vsgr, &mut Style::default())
+                }
+            }
+            _ => {
+                panic!("failed to create VStyle. not SGR")
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Char {
     Ansi(Ansi),
     Char(char),
@@ -392,7 +470,7 @@ impl From<u8> for Char {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Ansi {
+pub enum Ansi {
     CursorUp(String),
     CursonDown(String),
     CursorForward(String),
@@ -413,7 +491,7 @@ enum Ansi {
 /// [01;32m"some string"[0m
 /// results in "some string" being green
 #[derive(Debug, Clone, PartialEq)]
-enum Sgr {
+pub enum Sgr {
     Reset,
     Bold,
     Dim,
@@ -467,13 +545,13 @@ enum Sgr {
 
 
 #[derive(Debug, Clone, PartialEq)]
-enum Color {
+pub enum Color {
     N(u8),
     Rgb(RgbColor),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct RgbColor {
+pub struct RgbColor {
     r: u8,
     g: u8,
     b: u8,

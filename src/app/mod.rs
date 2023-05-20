@@ -11,7 +11,7 @@ use tui::{
     Terminal,
 };
 
-use crate::{ansi::{Char, test}, lua::{setup_lua, self}, shell::run_command, ui::ui};
+use crate::{ansi::{Char, test, Ansi, VStyle}, lua::{setup_lua, self}, shell::run_command, ui::ui};
 
 use self::auto_comp::on_comp;
 
@@ -33,6 +33,7 @@ pub struct App<'a> {
     /// x, y: horazontal, vertical
     pub vc: (u16, u16),
     pub vstdout: Vec<Vec<Char>>,
+    pub voutstyle: Vec<VStyle>,
     pub mode: AppMode,
     pub prompt: String,
     pub prompt_update: bool,
@@ -53,7 +54,8 @@ impl<'a> App<'a> {
             cmd_input: String::new(),
             content: Text::from(""),
             vc: (0, 0),
-            vstdout: vec_empty_char(100, 50),
+            vstdout: vec_empty_char(200, 50),
+            voutstyle: Vec::new(),
             mode: AppMode::Normal,
             prompt: String::new(),
             prompt_update: false,
@@ -110,6 +112,7 @@ pub fn reset_terminal() -> Result<()> {
 }
 
 pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
+
     let startup = fs::read_to_string("./config/startup.sh").unwrap();
     for line in startup.lines() {
         run_command(line.trim().to_string(), &mut app)
