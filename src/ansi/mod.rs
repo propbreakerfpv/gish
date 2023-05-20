@@ -23,12 +23,16 @@ pub fn test<'a>(app: &mut App, code: String) -> Text<'a> {
     let parsed = parser.parse();
 
     // panic!("{:?}", parsed);
+    // println!("{:?}", parsed);
 
     comput_cursore_moves(app, parsed.clone());
 
     // panic!("{:?}", app.vstdout);
+    // println!("{:?}", app.vstdout);
 
-    new_construct_text(app)
+    let ret = new_construct_text(app);
+    // println!("{:?}", ret);
+    ret
 }
 
 fn write_char(app: &mut App, char: Char) {
@@ -97,7 +101,6 @@ fn comput_cursore_moves<'a>(app: &mut App, input: Vec<Char>) {
 fn new_construct_text<'a>(app: &mut App) -> Text<'a> {
     let mut input = Vec::new();
 
-    let mut tmp = Vec::new();
 
     let mut found = 0;
     let mut idx = 0;
@@ -105,16 +108,12 @@ fn new_construct_text<'a>(app: &mut App) -> Text<'a> {
         for char in line {
             if char != Char::Empty {
                 found = idx;
-                tmp.push(char.clone());
             }
             input.push(char);
         }
         input.push(Char::Char('\n'));
         idx += 1;
     }
-
-
-    // panic!("{:?}", tmp);
 
     let mut spans = Vec::new();
     let mut span = Vec::new();
@@ -312,9 +311,13 @@ fn parse_sgr(sgrs: Vec<Sgr>, style: &mut Style) -> Style {
             }
             Sgr::SetForeground(color) => {
                 match color {
-                    Color::N(_) => {}
+                    Color::N(_) => {
+                        // panic!("color is N");
+                    }
                     Color::Rgb(rgb) => {
-                        style.patch(Style::default().fg(style::Color::Rgb(rgb.r, rgb.g, rgb.b)));
+                        // println!("{:?}", style::Color::Rgb(rgb.r, rgb.g, rgb.b));
+                        *style = style.patch(Style::default().fg(style::Color::Rgb(rgb.r, rgb.g, rgb.b)));
+                        // print!("{:?}", style);
                     }
                 }
             }
@@ -701,13 +704,14 @@ impl AnsiParser {
                             }
                         } else {
                             rgb.push(arg.parse().unwrap());
-                            println!("pushing a color {:?}", rgb);
+                            // println!("pushing a color {:?}", rgb);
                             let color = Color::Rgb(RgbColor::try_from(rgb.clone()).unwrap());
                             // panic!("color is now {:?}", color);
                             match color_push_type {
                                 ColorPushType::Forground => ret.push(Sgr::SetForeground(color)),
                                 ColorPushType::Background => ret.push(Sgr::SetBackground(color))
                             }
+                            // println!("{:?}", ret.last());
                             in_color = false;
                             // rgb.clear();
                         }
@@ -865,9 +869,11 @@ impl AnsiParser {
                     // error?
                     // return Err(anyhow!("no a valid sgr code `{}`", e))
                     // println!("ERROR `{}`", e);
+                    todo!("handle errors in sgr parser");
                 }
             }
         }
+        // println!("{:?}", ret);
         Ok(ret)
     }
 

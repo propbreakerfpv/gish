@@ -11,7 +11,7 @@ use tui::{
     Terminal,
 };
 
-use crate::{ansi::{Char, test}, lua::setup_lua, shell::run_command, ui::ui};
+use crate::{ansi::{Char, test}, lua::{setup_lua, self}, shell::run_command, ui::ui};
 
 use self::auto_comp::on_comp;
 
@@ -114,6 +114,8 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
     for line in startup.lines() {
         run_command(line.trim().to_string(), &mut app)
     }
+
+    app.prompt = lua::get_prompt(&mut app);
 
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
