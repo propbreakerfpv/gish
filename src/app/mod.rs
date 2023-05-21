@@ -11,16 +11,16 @@ use tui::{
     Terminal,
 };
 
-use crate::{ansi::{Char, test, Ansi}, lua::{setup_lua, self}, shell::run_command, ui::ui};
+use crate::{ansi::{test, Pos}, lua::{setup_lua, self}, shell::run_command, ui::ui};
 
 use self::auto_comp::on_comp;
 
 pub mod auto_comp;
 
-fn vec_empty_char(width: u16, hight: u16) -> Vec<Vec<Char>> {
+fn vec_empty_char(width: u16, hight: u16) -> Vec<Vec<Pos>> {
     let mut out = Vec::new();
     for _ in 1..=hight {
-        out.push(vec![Char::Empty; width as usize]);
+        out.push(vec![Pos::Empty; width as usize]);
     }
     out
 }
@@ -32,7 +32,7 @@ pub struct App<'a> {
     pub content: Text<'a>,
     /// x, y: horazontal, vertical
     pub vc: (u16, u16),
-    pub vstdout: Vec<Vec<Char>>,
+    pub vstdout: Vec<Vec<Pos>>,
     pub mode: AppMode,
     pub prompt: String,
     pub prompt_update: bool,

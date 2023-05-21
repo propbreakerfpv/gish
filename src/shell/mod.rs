@@ -12,7 +12,7 @@ pub fn run_if_builtin(app: &mut App, cmd: String) -> Option<()> {
             std::process::exit(0);
         }
         "refresh" => {
-            app.println("refreshing");
+            app.println("refreshing\n");
             let mut lua = app.lua.borrow_mut();
             let mut internal: LuaTable<_> = lua.get("_internal").unwrap();
             let run_event: Option<LuaFunction<_>> = internal.get("run_event");

@@ -1,416 +1,46 @@
-// resources
-// https://en.wikipedia.org/wiki/ANSI_escape_code
-// https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
-
-
-
-
 use anyhow::{anyhow, Result};
-use tui::{text::{Text, Span, Spans}, style::{self, Style, Modifier}};
+use tui::{
+    style::{Style, Modifier, self},
+    text::{Span, Spans, Text},
+};
 
 use crate::app::App;
 
-pub fn test<'a>(app: &mut App, code: String) -> Text<'a> {
-
-
-    let parser = AnsiParser {
-        content: code.into(),
+pub fn test<'a>(app: &mut App, str: String) -> Text<'a> {
+    let ansi_parser = AnsiParser {
+        content: str.into(),
         pos: 0,
     };
-    // panic!("{:?}", construct_text(app, parser.parse()));
-    
 
-    let parsed = parser.parse();
-
-    // panic!("{:?}", parsed);
-    // println!("{:?}", parsed);
-
-    comput_cursore_moves(app, parsed.clone());
-
-    // panic!("{:?}", app.vstdout);
-    // println!("{:?}", app.vstdout);
-
-    let ret = new_construct_text(app);
-    // println!("{:?}", ret);
-    ret
+    let chars = ansi_parser.parse();
+    add_to_vstdout(app, chars);
+    construct_text(app)
 }
 
-fn write_char(app: &mut App, char: Char) {
-    app.vstdout[app.vc.1 as usize][app.vc.0 as usize] = char;
-    app.vc.0 += 1;
-}
-
-fn comput_cursore_moves<'a>(app: &mut App, input: Vec<Char>) {
-    for char in input {
-        match char {
-            Char::Char(char) => {
-                if char == '\n' {
-                    if app.vc.1 == app.vstdout.len() as u16 - 1 {
-                        // todo fix this. should probubly scroll everything up by one row?
-                        // text.push(Vec::new());
-                    } else {
-                        app.vc.1 += 1;
-                        app.vc.0 = 0;
-                    }
-                } else {
-                    write_char(app, Char::Char(char))
-                }
-            }
-            Char::Ansi(ansi) => {
-                // print!("{:?}", ansi);
-                match ansi {
-                    Ansi::CursorUp(amount) => {
-                        let mut amount: u64 = amount.parse().unwrap();
-                        // some applications set this to 9999999 witch will overflow a u16 so we
-                        // prevent that here. there is probubly a better way of doing this but 
-                        // this works for now
-                        if amount > u16::MAX as u64 {
-                            amount = u16::MAX as u64;
-                        }
-                        if app.vstdout[0].len() > amount as usize {
-                            app.vc.1 -= amount as u16
-                        } else {
-                            app.vc.1 = 0;
-                        }
-                    }
-                    Ansi::CursonDown(amount) => {
-                        let mut amount: u64 = amount.parse().unwrap();
-                        if amount > u16::MAX as u64 {
-                            amount = u16::MAX as u64;
-                        }
-                        if app.vstdout[0].len() > amount as usize {
-                            app.vc.1 += amount as u16
-                        } else {
-                            // todo. set this to be the hight of vstdout insted of 0.
-                            // aslo do it on all the cases below this
-                            app.vc.1 = 0;
-                        }
-                    }
-                    Ansi::CursorForward(amount) => {
-                        let mut amount: u64 = amount.parse().unwrap();
-                        if amount > u16::MAX as u64 {
-                            amount = u16::MAX as u64;
-                        }
-                        if app.vstdout[0].len() > amount as usize {
-                            app.vc.0 += amount as u16;
-                        } else {
-                            print!("forward 0");
-                            app.vc.0 = 0;
-                        }
-                    }
-                    Ansi::CursorBack(amount) => {
-                        let mut amount: u64 = amount.parse().unwrap();
-                        if amount > u16::MAX as u64 {
-                            amount = u16::MAX as u64;
-                        }
-                        if app.vstdout[0].len() > amount as usize {
-                            app.vc.0 -= amount as u16
-                        } else {
-                            app.vc.0 = 0;
-                        }
-                    }
-                    Ansi::CursorNextLine(amount) => {
-                        let mut amount: u64 = amount.parse().unwrap();
-                        if amount > u16::MAX as u64 {
-                            amount = u16::MAX as u64;
-                        }
-                        if app.vstdout[0].len() > amount as usize {
-                            app.vc.1 += amount as u16;
-                            app.vc.0 = 0;
-                        } else {
-                            app.vc.1 = 0;
-                            app.vc.0 = 0;
-                        }
-                    }
-                    Ansi::CursorPreviousLine(amount) => {
-                        let mut amount: u64 = amount.parse().unwrap();
-                        if amount > u16::MAX as u64 {
-                            amount = u16::MAX as u64;
-                        }
-                        if app.vstdout[0].len() > amount as usize {
-                            app.vc.1 -= amount as u16;
-                            app.vc.0 = 0;
-                        } else {
-                            app.vc.1 = 0;
-                            app.vc.0 = 0;
-                        }
-                    }
-                    Ansi::CursorHorizontalAbsolute(amount) => {
-                        let mut amount: u64 = amount.parse().unwrap();
-                        if amount > u16::MAX as u64 {
-                            amount = u16::MAX as u64;
-                        }
-                        // todo. make this not panic if vstdout is empty
-                        if (amount as usize) < app.vstdout[0].len() {
-                            app.vc.0 = amount as u16;
-                        } else {
-                            app.vc.0 = app.vstdout[0].len() as u16;
-                        }
-                    }
-                    Ansi::CursorPosition((n, m)) => {
-                        let mut n: u64 = n.parse().unwrap();
-                        if n > u16::MAX as u64 {
-                            n = u16::MAX as u64;
-                        }
-                        let mut m: u64 = m.parse().unwrap();
-                        if m > u16::MAX as u64 {
-                            m = u16::MAX as u64;
-                        }
-                        if (n as usize) < app.vstdout[0].len() {
-                            app.vc.0 = n as u16;
-                        } else {
-                            app.vc.0 = app.vstdout[0].len() as u16;
-                        }
-
-                        if (m as usize) < app.vstdout.len() {
-                            app.vc.1 = m as u16;
-                        } else {
-                            app.vc.1 = app.vstdout.len() as u16;
-                        }
-                    }
-                    Ansi::EraseInDisplay(_) => {} // dont need to handle this here. i think anyway
-                    Ansi::EraseInLine(_v) => {
-                        todo!("EraseInLine")
-                    }
-                    Ansi::ScrollUp(_v) => {
-                        todo!("scrollup")
-                    }
-                    Ansi::ScrollDown(_v) => {
-                        todo!("scrolldown")
-                    }
-                    Ansi::HorizontalVerticalPosition((n, m)) => {
-                        // todo. currently this is the same as CursorPosition. on wicipedia it says
-                        // there is a diference to do with CR and LF. make that work i guess?
-                        let mut n: u64 = n.parse().unwrap();
-                        if n > u16::MAX as u64 {
-                            n = u16::MAX as u64;
-                        }
-                        let mut m: u64 = m.parse().unwrap();
-                        if m > u16::MAX as u64 {
-                            m = u16::MAX as u64;
-                        }
-                        if (n as usize) < app.vstdout[0].len() {
-                            app.vc.0 = n as u16;
-                        } else {
-                            app.vc.0 = app.vstdout[0].len() as u16;
-                        }
-
-                        if (m as usize) < app.vstdout.len() {
-                            app.vc.1 = m as u16;
-                        } else {
-                            app.vc.1 = app.vstdout.len() as u16;
-                        }
-                    }
-                    Ansi::Sgr(sgr) => {
-                        // text.last_mut().unwrap().push(Char::Ansi(Ansi::Sgr(sgr)))
-                        write_char(app, Char::Ansi(Ansi::Sgr(sgr)));
-                    }
-                }
-            }
-            Char::Empty => {
-                app.vc.0 += 1;
-            }
-        }
-    }
-}
-
-fn new_construct_text<'a>(app: &mut App) -> Text<'a> {
-    let mut input = Vec::new();
-
-
-    let mut found = 0;
-    let mut idx = 0;
-    for line in app.vstdout.clone() {
-        for char in line {
-            if char != Char::Empty {
-                found = idx;
-            }
-            input.push(char);
-        }
-        input.push(Char::Char('\n'));
-        idx += 1;
-    }
-
+fn construct_text<'a>(app: &mut App) -> Text<'a> {
+    let mut style = Style::default();
     let mut spans = Vec::new();
     let mut span = Vec::new();
-    let mut current_text = String::new();
-    let mut style = Style::default();
-    for char in input {
-        match char {
-            Char::Char(char) => {
-                if char == '\n' && found >= 0 {
-                    span.push(Span::styled(current_text.clone(), style));
-                    spans.push(Spans::from(span.clone()));
-                    span.clear();
-                    current_text.clear();
-                    found -= 1;
+    for line in app.vstdout.clone() {
+        for pos in line {
+            match pos {
+                Pos::Char(char, s) => {
+                    style = s;
+                    span.push(Span::styled(String::from(char), style.clone()));
                 }
-                current_text.push(char);
-            }
-            Char::Ansi(ansi) => {
-                match ansi {
-                    // Ansi::CursorUp(v) => {}
-                    // Ansi::CursorUp(v) => {}
-                    // Ansi::CursonDown(v) => {}
-                    // Ansi::CursorForward(v) => {}
-                    // Ansi::CursorBack(v) => {}
-                    // Ansi::CursorNextLine(v) => {}
-                    // Ansi::CursorPreviousLine(v) => {}
-                    // Ansi::CursorHorizontalAbsolute(v) => {}
-                    // Ansi::CursorPosition((n, m)) => {}
-                    Ansi::EraseInDisplay(v) => {
-                        match v.as_str() {
-                            // clear from cursor to end of screen
-                            "0" => {
-                            }
-                            // clear entire screen
-                            "2" => {
-                                app.content = Text::from("");
-                                app.scroll = (0, 0)
-                            }
-                            // clear entire screen and all lines saved in  scrollback buffer
-                            "3" => {}
-                            _ => {}
-                        }
-                    }
-                    // Ansi::EraseInLine(v) => {}
-                    // Ansi::ScrollUp(v) => {}
-                    // Ansi::ScrollDown(v) => {}
-                    // Ansi::HorizontalVerticalPosition((n, m)) => {}
-                    Ansi::Sgr(sgr) => {
-                        if !current_text.is_empty() {
-                            span.push(Span::styled(current_text.clone(), style));
-                        }
-                        // text.extend(Text::styled(current_text.clone(), style));
-                        current_text.clear();
-                        parse_sgr(sgr, &mut style);
-                    }
-                    _ => {}
+                Pos::Empty => {
+                    span.push(Span::styled(String::from(' '), Style::default()));
                 }
-            }
-            Char::Empty => {
-                current_text.push(' ');
             }
         }
-    }
-    if !current_text.is_empty() {
-        span.push(Span::styled(current_text.clone(), style));
-        spans.push(Spans::from(span.clone()));
+        if ! span.is_empty() {
+            spans.push(Spans::from(span.clone()));
+            span.clear();
+        }
     }
     Text::from(spans)
 }
 
-
-fn parse_sgr(sgrs: Vec<Sgr>, style: &mut Style) -> Style {
-    for sgr in sgrs {
-        match sgr {
-            Sgr::Reset => {
-                *style = Style::default();
-                // panic!("{:?}", style);
-            }
-            Sgr::Bold => {
-                *style = style.patch(Style::default().add_modifier(Modifier::BOLD));
-            }
-            Sgr::Dim => {
-                *style = style.patch(Style::default().add_modifier(Modifier::DIM));
-            }
-            Sgr::Italic => {
-                *style = style.patch(Style::default().add_modifier(Modifier::ITALIC));
-            }
-            Sgr::Underline => {
-                *style = style.patch(Style::default().add_modifier(Modifier::UNDERLINED));
-            }
-            Sgr::SlowBlink => {
-                *style = style.patch(Style::default().add_modifier(Modifier::SLOW_BLINK));
-            }
-            Sgr::RapidBlink => {
-                *style = style.patch(Style::default().add_modifier(Modifier::RAPID_BLINK));
-            }
-            Sgr::Invert => {
-                *style = style.patch(Style::default().add_modifier(Modifier::REVERSED));
-            }
-            Sgr::Hide => {
-                *style = style.patch(Style::default().add_modifier(Modifier::HIDDEN));
-            }
-            Sgr::Strike => {
-                *style = style.patch(Style::default().add_modifier(Modifier::CROSSED_OUT));
-            }
-            Sgr::PrimaryFont => {
-            }
-            Sgr::AltFont(_u8) => {}
-            Sgr::Gothic => {}
-            Sgr::DoublyUnderlined => {}
-            Sgr::NormalIntensity => {}
-            Sgr::NotItalicOrBlackletter => {}
-            Sgr::NotUnderlined => {
-                *style = style.patch(Style::default().remove_modifier(Modifier::UNDERLINED));
-            }
-            Sgr::NotBlinking => {
-                *style = style.patch(Style::default().remove_modifier(Modifier::RAPID_BLINK).remove_modifier(Modifier::SLOW_BLINK));
-            }
-            Sgr::ProportionalSpacing => {}
-            Sgr::NotInvert => {
-                *style = style.patch(Style::default().remove_modifier(Modifier::REVERSED));
-            }
-            Sgr::NotHidden => {
-                *style = style.patch(Style::default().remove_modifier(Modifier::HIDDEN));
-            }
-            Sgr::NotStrike => {
-                *style = style.patch(Style::default().remove_modifier(Modifier::CROSSED_OUT));
-            }
-            Sgr::SetForeground7(u8) => {
-                *style = style.patch(Style::default().fg(get_color_idx(u8)));
-            }
-            Sgr::SetForeground(color) => {
-                match color {
-                    Color::N(_) => {
-                        // panic!("color is N");
-                    }
-                    Color::Rgb(rgb) => {
-                        // println!("{:?}", style::Color::Rgb(rgb.r, rgb.g, rgb.b));
-                        *style = style.patch(Style::default().fg(style::Color::Rgb(rgb.r, rgb.g, rgb.b)));
-                        // print!("{:?}", style);
-                    }
-                }
-            }
-            Sgr::DefaultForeground => {
-                *style = style.patch(Style::default().fg(style::Color::Reset));
-            }
-            Sgr::SetBackground7(u8) => {
-                *style = style.patch(Style::default().bg(get_color_idx(u8)));
-            }
-            Sgr::SetBackground(color) => {
-                match color {
-                    Color::N(_) => {}
-                    Color::Rgb(rgb) => {
-                        *style = style.patch(Style::default().bg(style::Color::Rgb(rgb.r, rgb.g, rgb.b)));
-                    }
-                }
-            }
-            Sgr::DefaultBackground => {
-                *style = style.patch(Style::default().bg(style::Color::Reset));
-            }
-            Sgr::DisableProportionalSpacing => {}
-            Sgr::Framed => {}
-            Sgr::Encircled => {}
-            Sgr::Overlined => {}
-            Sgr::NotFramedOrEncircled => {}
-            Sgr::NotOverlined => {}
-            Sgr::SetUnderline(_color) => {}
-            Sgr::DefaultUnderline => {}
-
-            // todo bright forground and background are not actualy bright there just the
-            // normal 7 color
-            Sgr::SetBrightForground7(u8) => {
-                *style = style.patch(Style::default().fg(get_color_idx(u8)));
-            }
-            Sgr::SetBrightBackground7(u8) => {
-                *style = style.patch(Style::default().bg(get_color_idx(u8)));
-            }
-        }
-    }
-    Style::default()
-}
 
 fn get_color_idx(idx: u8) -> style::Color {
     match idx {
@@ -425,22 +55,182 @@ fn get_color_idx(idx: u8) -> style::Color {
     }
 }
 
-struct AnsiParser {
-    content: Vec<u8>,
-    pos: usize,
+fn add_to_vstdout(app: &mut App, chars: Vec<Char>) {
+    let mut style = Style::default();
+    for char in chars {
+        match char {
+            Char::Char(c) => {
+                // handle CR and other "newline" like chars?
+                // also hanle overflowing vstdout
+                if c == '\n' {
+                    app.vc.0 = 0;
+                    app.vc.1 += 1;
+                } else {
+                    app.vstdout[app.vc.1 as usize][app.vc.0 as usize] =
+                        Pos::Char(c, style.clone());
+                    app.vc.0 += 1;
+                }
+            }
+            Char::Ansi(ansi) => match ansi {
+                Ansi::CursorUp(n) => {
+                    let n: u64 = n.parse().unwrap();
+                    if n < app.vc.1 as u64 {
+                        app.vc.1 -= n as u16;
+                    } else {
+                        app.vc.1 = 0;
+                    }
+                }
+                Ansi::CursonDown(n) => {
+                    let n: u64 = n.parse().unwrap();
+                    if n < app.vstdout.len() as u64 {
+                        app.vc.1 += n as u16;
+                    } else {
+                        app.vc.1 = app.vstdout.len()as u16 - 1;
+                    }
+                }
+                Ansi::CursorForward(n) => {
+                    let n: u64 = n.parse().unwrap();
+                    if n < app.vstdout[0].len() as u64 {
+                        app.vc.0 += n as u16;
+                    } else {
+                        app.vc.0 = app.vstdout[0].len()as u16 - 1;
+                    }
+                }
+                Ansi::CursorBack(n) => {
+                    let n: u64 = n.parse().unwrap();
+                    if n < app.vc.0 as u64 {
+                        app.vc.0 -= n as u16;
+                    } else {
+                        app.vc.0 = 0;
+                    }
+                }
+                Ansi::CursorNextLine(n) => {}
+                Ansi::CursorPreviousLine(n) => {}
+                Ansi::CursorHorizontalAbsolute(n) => {}
+                Ansi::CursorPosition(n) => {}
+                Ansi::EraseInDisplay(n) => {}
+                Ansi::EraseInLine(n) => {}
+                Ansi::ScrollUp(n) => {}
+                Ansi::ScrollDown(n) => {}
+                Ansi::HorizontalVerticalPosition(n) => {}
+                Ansi::Sgr(sgrs) => {
+                    for sgr in sgrs {
+                        match sgr {
+                            Sgr::Reset => {
+                                style = Style::default();
+                            }
+                            Sgr::Bold => {
+                                style = style.patch(Style::default().add_modifier(Modifier::BOLD));
+                            }
+                            Sgr::Dim => {
+                                style = style.patch(Style::default().add_modifier(Modifier::DIM));
+                            }
+                            Sgr::Italic => {
+                                style = style.patch(Style::default().add_modifier(Modifier::ITALIC));
+                            }
+                            Sgr::Underline => {
+                                style = style.patch(Style::default().add_modifier(Modifier::UNDERLINED));
+                            }
+                            Sgr::SlowBlink => {
+                                style = style.patch(Style::default().add_modifier(Modifier::SLOW_BLINK));
+                            }
+                            Sgr::RapidBlink => {
+                                style = style.patch(Style::default().add_modifier(Modifier::RAPID_BLINK));
+                            }
+                            Sgr::Invert => {
+                                style = style.patch(Style::default().add_modifier(Modifier::REVERSED));
+                            }
+                            Sgr::Hide => {
+                                style = style.patch(Style::default().add_modifier(Modifier::HIDDEN));
+                            }
+                            Sgr::Strike => {
+                                style = style.patch(Style::default().add_modifier(Modifier::CROSSED_OUT));
+                            }
+                            Sgr::PrimaryFont => {}
+                            Sgr::AltFont(_) => {}
+                            Sgr::Gothic => {}
+                            Sgr::DoublyUnderlined => {}
+                            Sgr::NormalIntensity => {}
+                            Sgr::NotItalicOrBlackletter => {
+                                // remove blackletter?
+                                style = style.patch(Style::default().remove_modifier(Modifier::ITALIC));
+                            }
+                            Sgr::NotUnderlined => {
+                                style = style.patch(Style::default().remove_modifier(Modifier::UNDERLINED));
+                            }
+                            Sgr::NotBlinking => {
+                                style = style.patch(Style::default().remove_modifier(Modifier::RAPID_BLINK).remove_modifier(Modifier::SLOW_BLINK));
+                            }
+                            Sgr::ProportionalSpacing => {}
+                            Sgr::NotInvert => {
+                                style = style.patch(Style::default().remove_modifier(Modifier::REVERSED));
+                            }
+                            Sgr::NotHidden => {
+                                style = style.patch(Style::default().remove_modifier(Modifier::HIDDEN));
+                            }
+                            Sgr::NotStrike => {
+                                style = style.patch(Style::default().remove_modifier(Modifier::CROSSED_OUT));
+                            }
+                            Sgr::SetForeground7(n) => {
+                                style = style.patch(Style::default().fg(get_color_idx(n)))
+                            }
+                            Sgr::SetForeground(color) => {
+                                match color {
+                                    Color::N(_) => {
+                                        // panic!("color is N");
+                                    }
+                                    Color::Rgb(rgb) => {
+                                        style = style.patch(Style::default().fg(style::Color::Rgb(rgb.r, rgb.g, rgb.b)));
+                                    }
+                                }
+                            }
+                            Sgr::DefaultForeground => {
+                                style = style.patch(Style::default().fg(style::Color::Reset));
+                            }
+                            Sgr::SetBackground7(n) => {
+                                style = style.patch(Style::default().bg(get_color_idx(n)))
+                            }
+                            Sgr::SetBackground(color) => {
+                                match color {
+                                    Color::N(_) => {
+                                        // panic!("color is N");
+                                    }
+                                    Color::Rgb(rgb) => {
+                                        style = style.patch(Style::default().bg(style::Color::Rgb(rgb.r, rgb.g, rgb.b)));
+                                    }
+                                }
+                            }
+                            Sgr::DefaultBackground => {
+                                style = style.patch(Style::default().bg(style::Color::Reset));
+                            }
+                            Sgr::DisableProportionalSpacing => {}
+                            Sgr::Framed => {}
+                            Sgr::Encircled => {}
+                            Sgr::Overlined => {}
+                            Sgr::NotFramedOrEncircled => {}
+                            Sgr::NotOverlined => {}
+                            Sgr::SetUnderline(_) => {}
+                            Sgr::DefaultUnderline => {}
+                            Sgr::SetBrightForground7(_) => {}
+                            Sgr::SetBrightBackground7(_) => {}
+                        }
+                    }
+                }
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pos {
+    Char(char, Style),
+    Empty,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Char {
     Ansi(Ansi),
     Char(char),
-    Empty,
-}
-
-impl From<u8> for Char {
-    fn from(value: u8) -> Self {
-        Char::Char(value as char)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -497,7 +287,7 @@ pub enum Sgr {
     DefaultBackground,
     DisableProportionalSpacing,
     /// emojis i think
-    Framed, 
+    Framed,
     /// emojis i think
     Encircled,
     /// maybe not supported?
@@ -505,18 +295,16 @@ pub enum Sgr {
     NotFramedOrEncircled,
     NotOverlined,
     /// not in standard
-    SetUnderline(Color), 
+    SetUnderline(Color),
     /// also not in standard for obvious reasons
     DefaultUnderline,
 
     // theres some here with realy long names that are not widely supported
-
     /// not widely supported afaik
     SetBrightForground7(u8),
     /// not widely supported afaik
     SetBrightBackground7(u8),
 }
-
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Color {
@@ -535,7 +323,7 @@ impl TryFrom<Vec<u8>> for RgbColor {
     type Error = anyhow::Error;
     fn try_from(value: Vec<u8>) -> std::result::Result<Self, Self::Error> {
         if value.len() < 3 {
-            return Err(anyhow!("invalid vector"))
+            return Err(anyhow!("invalid vector"));
         }
         Ok(RgbColor {
             r: value[0],
@@ -547,7 +335,7 @@ impl TryFrom<Vec<u8>> for RgbColor {
 
 enum ColorType {
     N,
-    Rgb
+    Rgb,
 }
 
 enum ColorPushType {
@@ -555,8 +343,10 @@ enum ColorPushType {
     Background,
 }
 
-fn vec_to_string(v: Vec<u8>) -> String {
-    v.iter().map(|&x| x as char).collect::<String>()
+impl From<u8> for Char {
+    fn from(value: u8) -> Self {
+        Char::Char(value as char)
+    }
 }
 
 fn parse_one_arg(args: Vec<u8>) -> String {
@@ -569,6 +359,7 @@ fn parse_one_arg(args: Vec<u8>) -> String {
     }
     ret
 }
+
 fn parse_two_arg(args: Vec<u8>) -> (String, String) {
     let mut one = String::new();
     let mut two = String::new();
@@ -586,9 +377,17 @@ fn parse_two_arg(args: Vec<u8>) -> (String, String) {
     (one, two)
 }
 
+/// should maybe be in a utils mod?
+fn vec_to_string(v: Vec<u8>) -> String {
+    v.iter().map(|&x| x as char).collect::<String>()
+}
+
+struct AnsiParser {
+    content: Vec<u8>,
+    pos: usize,
+}
 
 impl AnsiParser {
-    /// should return a Vec<Span>?
     fn parse(mut self) -> Vec<Char> {
         let mut ret = Vec::new();
         while !self.eof() {
@@ -597,7 +396,6 @@ impl AnsiParser {
         ret
     }
 
-    // should also return something. probubly Span
     fn parse_next(&mut self) -> Char {
         let next = self.consume_next();
         if next == 27 {
@@ -606,14 +404,14 @@ impl AnsiParser {
         Char::from(next)
     }
 
-    // should retrun something
     fn parse_escap_sequences(&mut self) -> Char {
         match self.consume_next() {
             // todo C0 control codes. se wikipedia
-            91 => { // [
+            91 => {
+                // [
                 self.parse_csi_sequences()
             }
-            v => { Char::from(v) }
+            v => Char::from(v),
         }
     }
 
@@ -622,15 +420,19 @@ impl AnsiParser {
         let args = self.parse_csi_parameter_bytes();
         let next = self.consume_next();
 
-        // Moves the cursor n (default 1) cells in the given direction. If the 
+        // Moves the cursor n (default 1) cells in the given direction. If the
         // cursor is already at the edge of the screen, this has no effect.
-        if next == b'A' { // cursor up
+        if next == b'A' {
+            // cursor up
             Char::Ansi(Ansi::CursorUp(parse_one_arg(args)))
-        } else if next == b'B' { // cursor down
+        } else if next == b'B' {
+            // cursor down
             Char::Ansi(Ansi::CursonDown(parse_one_arg(args)))
-        } else if next == b'C' { // cursor forward
+        } else if next == b'C' {
+            // cursor forward
             Char::Ansi(Ansi::CursorForward(parse_one_arg(args)))
-        } else if next == b'D' { // cursor back
+        } else if next == b'D' {
+            // cursor back
             Char::Ansi(Ansi::CursorBack(parse_one_arg(args)))
         }
         // Moves cursor to beginning of the line n (default 1) lines down.
@@ -638,7 +440,7 @@ impl AnsiParser {
         else if next == b'E' {
             Char::Ansi(Ansi::CursorNextLine(parse_one_arg(args)))
         }
-        // Moves cursor to beginning of the line n (default 1) lines up. 
+        // Moves cursor to beginning of the line n (default 1) lines up.
         // (not ANSI.SYS
         else if next == b'F' {
             Char::Ansi(Ansi::CursorPreviousLine(parse_one_arg(args)))
@@ -647,41 +449,41 @@ impl AnsiParser {
         else if next == b'G' {
             Char::Ansi(Ansi::CursorHorizontalAbsolute(parse_one_arg(args)))
         }
-        // Moves the cursor to row n, column m. The values are 1-based, and 
-        // default to 1 (top left corner) if omitted. A sequence such as CSI 
+        // Moves the cursor to row n, column m. The values are 1-based, and
+        // default to 1 (top left corner) if omitted. A sequence such as CSI
         // ;5H is a synonym for CSI 1;5H as well as CSI 17;H is the same as CSI
         // 17H and CSI 17;1H
         else if next == b'H' {
             Char::Ansi(Ansi::CursorPosition(parse_two_arg(args)))
         }
         // Clears part of the screen. If n is 0 (or missing), clear from cursor
-        // to end of screen. If n is 1, clear from cursor to beginning of the 
-        // screen. If n is 2, clear entire screen (and moves cursor to upper 
+        // to end of screen. If n is 1, clear from cursor to beginning of the
+        // screen. If n is 2, clear entire screen (and moves cursor to upper
         // left on DOS ANSI.SYS). If n is 3, clear entire screen and delete all
-        // lines saved in the scrollback buffer (this feature was added for 
+        // lines saved in the scrollback buffer (this feature was added for
         // xterm and is supported by other terminal applications).
         else if next == b'J' {
             Char::Ansi(Ansi::EraseInDisplay(parse_one_arg(args)))
         }
-        // Erases part of the line. If n is 0 (or missing), clear from cursor 
-        // to the end of the line. If n is 1, clear from cursor to beginning 
+        // Erases part of the line. If n is 0 (or missing), clear from cursor
+        // to the end of the line. If n is 1, clear from cursor to beginning
         // of the line. If n is 2, clear entire line. Cursor position does not
         // change.
         else if next == b'K' {
             Char::Ansi(Ansi::EraseInLine(parse_one_arg(args)))
         }
-        // Scroll whole page up by n (default 1) lines. New lines are added at 
+        // Scroll whole page up by n (default 1) lines. New lines are added at
         // the bottom. (not ANSI.SYS)
         else if next == b'S' {
             Char::Ansi(Ansi::ScrollUp(parse_one_arg(args)))
         }
-        // Scroll whole page down by n (default 1) lines. New lines are added 
+        // Scroll whole page down by n (default 1) lines. New lines are added
         // at the top. (not ANSI.SYS)
         else if next == b'T' {
             Char::Ansi(Ansi::ScrollDown(parse_one_arg(args)))
         }
         // Same as cursor position, but counts as a format effector function (like CR
-        // or LF) rather than an editor function (like CUD or CNL). This can 
+        // or LF) rather than an editor function (like CUD or CNL). This can
         // lead to different handling in certain terminal modes
         else if next == b'f' {
             Char::Ansi(Ansi::HorizontalVerticalPosition(parse_two_arg(args)))
@@ -700,10 +502,10 @@ impl AnsiParser {
     }
 
     fn parse_sgr(&mut self, args: Vec<u8>) -> Result<Vec<Sgr>, anyhow::Error> {
-        // The control sequence CSI n m, named Select Graphic Rendition (SGR), 
-        // sets display attributes. Several attributes can be set in the same 
+        // The control sequence CSI n m, named Select Graphic Rendition (SGR),
+        // sets display attributes. Several attributes can be set in the same
         // sequence, separated by semicolons. Each display attribute remains
-        // in effect until a following occurrence of SGR resets it. If no 
+        // in effect until a following occurrence of SGR resets it. If no
         // codes are given, CSI m is treated as CSI 0 m (reset / normal)
 
         let mut ret = Vec::new();
@@ -714,9 +516,7 @@ impl AnsiParser {
         let mut rgb: Vec<u8> = Vec::new();
 
         for arg in vec_to_string(args.clone()).split(';') {
-
             // println!("rgb len {}", rgb.len());
-
 
             // todo find a better way to trim leading 0s without removing valid 0s
             let mut arg = arg.trim().trim_start_matches('0');
@@ -744,7 +544,7 @@ impl AnsiParser {
                         let color = Color::N(arg.parse().unwrap());
                         match color_push_type {
                             ColorPushType::Forground => ret.push(Sgr::SetForeground(color)),
-                            ColorPushType::Background => ret.push(Sgr::SetBackground(color))
+                            ColorPushType::Background => ret.push(Sgr::SetBackground(color)),
                         }
                         in_color = false;
                     }
@@ -752,7 +552,11 @@ impl AnsiParser {
                         if rgb.len() < 2 {
                             rgb.push(arg.parse().unwrap());
                             if arg == "70" {
-                                panic!("{:?} {:?}", vec_to_string(args).split(';').collect::<Vec<_>>(), rgb);
+                                panic!(
+                                    "{:?} {:?}",
+                                    vec_to_string(args).split(';').collect::<Vec<_>>(),
+                                    rgb
+                                );
                             }
                         } else {
                             rgb.push(arg.parse().unwrap());
@@ -761,7 +565,7 @@ impl AnsiParser {
                             // panic!("color is now {:?}", color);
                             match color_push_type {
                                 ColorPushType::Forground => ret.push(Sgr::SetForeground(color)),
-                                ColorPushType::Background => ret.push(Sgr::SetBackground(color))
+                                ColorPushType::Background => ret.push(Sgr::SetBackground(color)),
                             }
                             // println!("{:?}", ret.last());
                             in_color = false;
@@ -772,97 +576,37 @@ impl AnsiParser {
                 continue;
             }
             match arg {
-                "0" => {
-                    ret.push(Sgr::Reset)
-                }
-                "1" => {
-                    ret.push(Sgr::Bold)
-                }
-                "2" => {
-                    ret.push(Sgr::Dim)
-                }
-                "3" => {
-                    ret.push(Sgr::Italic)
-                }
-                "4" => {
-                    ret.push(Sgr::Underline)
-                }
-                "5" => {
-                    ret.push(Sgr::SlowBlink)
-                }
-                "6" => {
-                    ret.push(Sgr::RapidBlink)
-                }
-                "7" => {
-                    ret.push(Sgr::Invert)
-                }
-                "8" => {
-                    ret.push(Sgr::Hide)
-                }
-                "9" => {
-                    ret.push(Sgr::Strike)
-                }
-                "10" => {
-                    ret.push(Sgr::PrimaryFont)
-                }
-                "11" => {
-                    ret.push(Sgr::AltFont(1))
-                }
-                "12" => {
-                    ret.push(Sgr::AltFont(2))
-                }
-                "13" => {
-                    ret.push(Sgr::AltFont(3))
-                }
-                "14" => {
-                    ret.push(Sgr::AltFont(4))
-                }
-                "15" => {
-                    ret.push(Sgr::AltFont(5))
-                }
-                "16" => {
-                    ret.push(Sgr::AltFont(6))
-                }
-                "17" => {
-                    ret.push(Sgr::AltFont(7))
-                }
-                "18" => {
-                    ret.push(Sgr::AltFont(8))
-                }
-                "19" => {
-                    ret.push(Sgr::AltFont(9))
-                }
-                "20" => {
-                    ret.push(Sgr::Gothic)
-                }
-                "21" => {
-                    ret.push(Sgr::DoublyUnderlined)
-                }
-                "22" => {
-                    ret.push(Sgr::NormalIntensity)
-                }
-                "23" => {
-                    ret.push(Sgr::NotItalicOrBlackletter)
-                }
-                "24" => {
-                    ret.push(Sgr::NotUnderlined)
-                }
-                "25" => {
-                    ret.push(Sgr::NotBlinking)
-                }
-                "26" => {
-                    ret.push(Sgr::ProportionalSpacing)
-                }
-                "27" => {
-                    ret.push(Sgr::NotInvert)
-                }
-                "28" => {
-                    ret.push(Sgr::NotHidden)
-                }
-                "29" => {
-                    ret.push(Sgr::NotStrike)
-                }
-                "30"|"31"|"32"|"33"|"34"|"35"|"36"|"37" =>{
+                "0" => ret.push(Sgr::Reset),
+                "1" => ret.push(Sgr::Bold),
+                "2" => ret.push(Sgr::Dim),
+                "3" => ret.push(Sgr::Italic),
+                "4" => ret.push(Sgr::Underline),
+                "5" => ret.push(Sgr::SlowBlink),
+                "6" => ret.push(Sgr::RapidBlink),
+                "7" => ret.push(Sgr::Invert),
+                "8" => ret.push(Sgr::Hide),
+                "9" => ret.push(Sgr::Strike),
+                "10" => ret.push(Sgr::PrimaryFont),
+                "11" => ret.push(Sgr::AltFont(1)),
+                "12" => ret.push(Sgr::AltFont(2)),
+                "13" => ret.push(Sgr::AltFont(3)),
+                "14" => ret.push(Sgr::AltFont(4)),
+                "15" => ret.push(Sgr::AltFont(5)),
+                "16" => ret.push(Sgr::AltFont(6)),
+                "17" => ret.push(Sgr::AltFont(7)),
+                "18" => ret.push(Sgr::AltFont(8)),
+                "19" => ret.push(Sgr::AltFont(9)),
+                "20" => ret.push(Sgr::Gothic),
+                "21" => ret.push(Sgr::DoublyUnderlined),
+                "22" => ret.push(Sgr::NormalIntensity),
+                "23" => ret.push(Sgr::NotItalicOrBlackletter),
+                "24" => ret.push(Sgr::NotUnderlined),
+                "25" => ret.push(Sgr::NotBlinking),
+                "26" => ret.push(Sgr::ProportionalSpacing),
+                "27" => ret.push(Sgr::NotInvert),
+                "28" => ret.push(Sgr::NotHidden),
+                "29" => ret.push(Sgr::NotStrike),
+                "30" | "31" | "32" | "33" | "34" | "35" | "36" | "37" => {
                     // 29 so its a range from 1 to 8, i think thats the best way to do it...
                     ret.push(Sgr::SetForeground7(arg.parse::<u8>().unwrap() - 30))
                 }
@@ -871,10 +615,8 @@ impl AnsiParser {
                     color_push_type = ColorPushType::Forground;
                     // ret.push(SGR::SetForeground(Color::N(0)))
                 }
-                "39" => {
-                    ret.push(Sgr::DefaultForeground)
-                }
-                "40"|"41"|"42"|"43"|"44"|"45"|"46"|"47" =>{
+                "39" => ret.push(Sgr::DefaultForeground),
+                "40" | "41" | "42" | "43" | "44" | "45" | "46" | "47" => {
                     // println!("4x");
                     ret.push(Sgr::SetBackground7(arg.parse::<u8>().unwrap() - 40))
                 }
@@ -884,37 +626,19 @@ impl AnsiParser {
                     color_push_type = ColorPushType::Background;
                     // ret.push(SGR::SetBackground(Color::N(0)))
                 }
-                "49" => {
-                    ret.push(Sgr::DefaultBackground)
-                }
-                "50" => {
-                    ret.push(Sgr::DisableProportionalSpacing)
-                }
-                "51" => {
-                    ret.push(Sgr::Framed)
-                }
-                "52" => {
-                    ret.push(Sgr::Encircled)
-                }
-                "53" => {
-                    ret.push(Sgr::Overlined)
-                }
-                "54" => {
-                    ret.push(Sgr::NotFramedOrEncircled)
-                }
-                "55" => {
-                    ret.push(Sgr::NotOverlined)
-                }
-                "56" => {
-                    ret.push(Sgr::SetUnderline(Color::N(0)))
-                }
-                "57" => {
-                    ret.push(Sgr::DefaultUnderline)
-                }
-                "90"|"91"|"92"|"93"|"94"|"95"|"96"|"97" => {
+                "49" => ret.push(Sgr::DefaultBackground),
+                "50" => ret.push(Sgr::DisableProportionalSpacing),
+                "51" => ret.push(Sgr::Framed),
+                "52" => ret.push(Sgr::Encircled),
+                "53" => ret.push(Sgr::Overlined),
+                "54" => ret.push(Sgr::NotFramedOrEncircled),
+                "55" => ret.push(Sgr::NotOverlined),
+                "56" => ret.push(Sgr::SetUnderline(Color::N(0))),
+                "57" => ret.push(Sgr::DefaultUnderline),
+                "90" | "91" | "92" | "93" | "94" | "95" | "96" | "97" => {
                     ret.push(Sgr::SetBrightForground7(arg.parse::<u8>().unwrap() - 90))
                 }
-                "100"|"101"|"102"|"103"|"104"|"105"|"106"|"107" => {
+                "100" | "101" | "102" | "103" | "104" | "105" | "106" | "107" => {
                     ret.push(Sgr::SetBrightBackground7(arg.parse::<u8>().unwrap() - 100))
                 }
                 _ => {
