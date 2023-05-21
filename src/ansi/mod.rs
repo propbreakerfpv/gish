@@ -3,8 +3,6 @@
 // https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
 
 
-mod new;
-
 
 
 use anyhow::{anyhow, Result};
@@ -205,8 +203,7 @@ fn comput_cursore_moves<'a>(app: &mut App, input: Vec<Char>) {
                     }
                     Ansi::Sgr(sgr) => {
                         // text.last_mut().unwrap().push(Char::Ansi(Ansi::Sgr(sgr)))
-                        // write_char(app, Char::Ansi(Ansi::Sgr(sgr)));
-                        app.voutstyle.push(VStyle::try_new(Ansi::Sgr(sgr), app.vc));
+                        write_char(app, Char::Ansi(Ansi::Sgr(sgr)));
                     }
                 }
             }
@@ -262,7 +259,6 @@ fn new_construct_text<'a>(app: &mut App) -> Text<'a> {
                     // Ansi::CursorHorizontalAbsolute(v) => {}
                     // Ansi::CursorPosition((n, m)) => {}
                     Ansi::EraseInDisplay(v) => {
-                        app.voutstyle.clear();
                         match v.as_str() {
                             // clear from cursor to end of screen
                             "0" => {
@@ -432,28 +428,6 @@ fn get_color_idx(idx: u8) -> style::Color {
 struct AnsiParser {
     content: Vec<u8>,
     pos: usize,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct VStyle {
-    pos: (u16, u16),
-    style: Style,
-}
-
-impl VStyle {
-    fn try_new(ansi: Ansi, pos: (u16, u16)) -> VStyle {
-        match ansi {
-            Ansi::Sgr(vsgr) => {
-                VStyle {
-                    pos,
-                    style: parse_sgr(vsgr, &mut Style::default())
-                }
-            }
-            _ => {
-                panic!("failed to create VStyle. not SGR")
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

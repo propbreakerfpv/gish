@@ -11,7 +11,7 @@ use tui::{
     Terminal,
 };
 
-use crate::{ansi::{Char, test, Ansi, VStyle}, lua::{setup_lua, self}, shell::run_command, ui::ui};
+use crate::{ansi::{Char, test, Ansi}, lua::{setup_lua, self}, shell::run_command, ui::ui};
 
 use self::auto_comp::on_comp;
 
@@ -33,7 +33,6 @@ pub struct App<'a> {
     /// x, y: horazontal, vertical
     pub vc: (u16, u16),
     pub vstdout: Vec<Vec<Char>>,
-    pub voutstyle: Vec<VStyle>,
     pub mode: AppMode,
     pub prompt: String,
     pub prompt_update: bool,
@@ -55,7 +54,6 @@ impl<'a> App<'a> {
             content: Text::from(""),
             vc: (0, 0),
             vstdout: vec_empty_char(200, 50),
-            voutstyle: Vec::new(),
             mode: AppMode::Normal,
             prompt: String::new(),
             prompt_update: false,
