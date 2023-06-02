@@ -1,4 +1,4 @@
-use tui::{widgets::Paragraph, text::{Spans, Span}, style::{Style, Color}, layout::Rect};
+use tui::{widgets::Paragraph, text::{Spans, Span, Text}, style::{Style, Color}, layout::Rect};
 
 
 use crate::shell;
@@ -22,9 +22,13 @@ pub fn auto_sagest(app: &mut App) {
             sagest = sagest[app.cmd_input.len()..sagest.len()].to_string();
         }
 
-        let text = Spans::from(Span::styled(sagest.clone(), Style::default().fg(Color::Red)));
+        let text = Spans::from(Span::styled(sagest.clone(), Style::default().fg(Color::Rgb(89, 89, 89))));
         let p = Paragraph::new(text);
         let size = Rect::new(app.vc.0, app.vc.1, sagest.len() as u16, 1);
+        app.vtext.insert(String::from("auto_sagest"), VText { p, size });
+    } else {
+        let p = Paragraph::new(Text::default());
+        let size = Rect::new(app.vc.0, app.vc.1, 0, 1);
         app.vtext.insert(String::from("auto_sagest"), VText { p, size });
     }
 }

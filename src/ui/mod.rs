@@ -7,6 +7,7 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     let size = f.size();
 
+
     let block = Block::default().style(Style::default().bg(Color::Black));
 
 

@@ -59,6 +59,7 @@ pub type LuaApp = String;
 
 impl<'a> App<'a> {
     pub fn new() -> App<'a> {
+        let (col, row) = crossterm::terminal::size().unwrap();
         App {
             search_input: String::new(),
             cmd_input: String::new(),
@@ -66,7 +67,7 @@ impl<'a> App<'a> {
             vtext: HashMap::new(),
             content: Text::from(""),
             vc: (0, 0),
-            vstdout: vec_empty_char(200, 50),
+            vstdout: vec_empty_char(col, row-2),
             mode: AppMode::Normal,
             prompt: String::new(),
             prompt_update: false,
@@ -160,6 +161,7 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
 
     app.prompt = lua::get_prompt(&mut app);
     app.println(app.prompt.clone());
+
 
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
