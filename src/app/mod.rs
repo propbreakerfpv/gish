@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, error::Error, fs, io};
+use std::{cell::RefCell, collections::HashMap, error::Error, fs, io, env};
 
 use crossterm::{
     event::{self, Event, KeyCode},
@@ -8,7 +8,7 @@ use hlua::Lua;
 use tui::{
     backend::Backend,
     text::{Span, Spans, Text},
-    Terminal,
+    Terminal, widgets::Paragraph, layout::Rect,
 };
 
 use crate::{ansi::{test, Pos}, lua::{setup_lua, self}, shell::run_command, ui::ui};
@@ -29,6 +29,9 @@ fn vec_empty_char(width: u16, hight: u16) -> Vec<Vec<Pos>> {
 pub struct App<'a> {
     pub search_input: String,
     pub cmd_input: String,
+    /// x, y: width, hight
+    pub size: (u16, u16),
+    pub vtext: HashMap<String, VText<'a>>,
     pub content: Text<'a>,
     /// x, y: horazontal, vertical
     pub vc: (u16, u16),
@@ -41,7 +44,15 @@ pub struct App<'a> {
     pub cmd_history_idx: usize,
     pub alais: HashMap<String, String>,
     pub scroll: (u16, u16),
+    pub path: String,
+    pub cmds: Vec<String>,
     pub lua: RefCell<Lua<'a>>,
+}
+
+#[derive(Debug)]
+pub struct VText<'a> {
+    pub p: Paragraph<'a>,
+    pub size: Rect, 
 }
 
 pub type LuaApp = String;
@@ -51,6 +62,8 @@ impl<'a> App<'a> {
         App {
             search_input: String::new(),
             cmd_input: String::new(),
+            size: (200, 50),
+            vtext: HashMap::new(),
             content: Text::from(""),
             vc: (0, 0),
             vstdout: vec_empty_char(200, 50),
@@ -62,6 +75,8 @@ impl<'a> App<'a> {
             cmd_history_idx: 0,
             alais: HashMap::new(),
             scroll: (0, 0),
+            path: env::var("PATH").unwrap(),
+            cmds: get_cmds(),
             lua: RefCell::new(Lua::new()),
         }
     }
@@ -88,6 +103,30 @@ impl<'a> App<'a> {
     //     self.vstdout[self.vc.1 as usize][self.vc.0 as usize] = char;
     //     self.vc.0 += 1;
     // }
+    pub fn update_app(&mut self) {
+        let path = env::var("PATH").unwrap();
+        if self.path != path {
+            self.path = path;
+            self.cmds = get_cmds();
+        }
+    }
+}
+
+fn get_cmds() -> Vec<String> {
+    let mut out = Vec::new();
+    let paths = env::var("PATH").unwrap();
+    let paths: Vec<&str> = paths.split(':').collect();
+    for path in paths {
+        let dir = match fs::read_dir(path) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        for file in dir {
+            let file = file.unwrap();
+            out.push(file.file_name().to_str().unwrap().to_string());
+        }
+    }
+    out
 }
 
 /// Normal
@@ -102,12 +141,15 @@ pub enum AppMode {
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
+
+
 pub fn reset_terminal() -> Result<()> {
     disable_raw_mode()?;
     crossterm::execute!(io::stdout(), LeaveAlternateScreen)?;
 
     Ok(())
 }
+
 
 pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
 
@@ -117,6 +159,7 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
     }
 
     app.prompt = lua::get_prompt(&mut app);
+    app.println(app.prompt.clone());
 
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
@@ -142,7 +185,7 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
                         }
                     }
                     KeyCode::Tab => {
-                        on_comp(&app);
+                        on_comp(&mut app);
                     }
                     KeyCode::Enter => {
                         if app.cmd_history_idx > 0 {
@@ -171,8 +214,8 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
                         app.println('\n');
                         run_command(app.cmd_input.clone(), &mut app);
 
+                        app.update_app();
                         app.println(app.prompt.clone());
-                        
                     }
                     KeyCode::End => {
                         app.mode = AppMode::Command;

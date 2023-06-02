@@ -1,23 +1,9 @@
-use tui::{backend::Backend, Frame, text::{Text, Span, Spans}, widgets::{Block, Paragraph, Borders, Clear}, style::{Style, Color}, layout::{Rect, Layout, Direction, Constraint}};
-use crate::{app::{App, LuaApp, AppMode }, lua::{call_internal, run_ui_update, get_prompt}};
+use tui::{backend::Backend, Frame, text::{Text, Spans}, widgets::{Block, Paragraph, Borders, Clear}, style::{Style, Color}, layout::{Rect, Layout, Direction, Constraint}};
+use crate::{app::{App, AppMode, auto_comp::auto_sagest }, lua::{run_ui_update, get_prompt}};
 
 
 
 pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
-
-    // let content: LuaApp = match call_internal(app, "on_tick") {
-    //     Some(v) => {
-    //         match v {
-    //             Ok(v) => v,
-    //             Err(e) => e.to_string(),
-    //         }
-    //     }
-    //     None => String::new(),
-    // };
-    //
-    // if !content.is_empty() {
-    //     app.println(content);
-    // }
 
     let size = f.size();
 
@@ -32,7 +18,6 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     }
 
     let mut prompt = get_prompt(app);
-    // panic!("{}", prompt);
     app.prompt = prompt.clone();
 
     prompt.push_str(app.cmd_input.clone().as_str());
@@ -55,7 +40,11 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     f.render_widget(main, size);
 
-    // if let AppMode::Searching = app.mode.clone() {
+    auto_sagest(app);
+    for p in &app.vtext {
+        f.render_widget(p.1.p.clone(), p.1.size)
+    }
+
     match app.mode {
         AppMode::Searching => {
             let block = Block::default().title("Search").borders(Borders::ALL);
@@ -67,12 +56,7 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             app.vc = (area.x + app.search_input.len() as u16 + 1, area.y + 1)
         }
         AppMode::Normal => {
-            // let cursor_pos_x = (app.prompt_len + app.cmd_input.len()) as u16;
-            // let cursor_pos_y = app.content.height() as u16 - app.scroll.0;
-
-            // f.set_cursor(cursor_pos_x, cursor_pos_y);
             f.set_cursor(app.vc.0, app.vc.1);
-            // app.vc = (cursor_pos_x, cursor_pos_y);
         }
         AppMode::Command => {}
     }

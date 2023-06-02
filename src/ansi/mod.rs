@@ -18,15 +18,13 @@ pub fn test<'a>(app: &mut App, str: String) -> Text<'a> {
 }
 
 fn construct_text<'a>(app: &mut App) -> Text<'a> {
-    let mut style = Style::default();
     let mut spans = Vec::new();
     let mut span = Vec::new();
     for line in app.vstdout.clone() {
         for pos in line {
             match pos {
                 Pos::Char(char, s) => {
-                    style = s;
-                    span.push(Span::styled(String::from(char), style.clone()));
+                    span.push(Span::styled(String::from(char), s));
                 }
                 Pos::Empty => {
                     span.push(Span::styled(String::from(' '), Style::default()));
@@ -41,6 +39,14 @@ fn construct_text<'a>(app: &mut App) -> Text<'a> {
     Text::from(spans)
 }
 
+
+fn vec_empty_char(width: u16, hight: u16) -> Vec<Vec<Pos>> {
+    let mut out = Vec::new();
+    for _ in 1..=hight {
+        out.push(vec![Pos::Empty; width as usize]);
+    }
+    out
+}
 
 fn get_color_idx(idx: u8) -> style::Color {
     match idx {
@@ -108,7 +114,19 @@ fn add_to_vstdout(app: &mut App, chars: Vec<Char>) {
                 Ansi::CursorPreviousLine(n) => {}
                 Ansi::CursorHorizontalAbsolute(n) => {}
                 Ansi::CursorPosition(n) => {}
-                Ansi::EraseInDisplay(n) => {}
+                Ansi::EraseInDisplay(n) => {
+                    match n.as_str() {
+                        "" | "0" => {
+                        }
+                        "1" => {
+                        }
+                        "2" => {
+                            app.vstdout = vec_empty_char(app.size.0, app.size.1);
+                            app.vc = (0, 0);
+                        }
+                        _ => {}
+                    }
+                }
                 Ansi::EraseInLine(n) => {}
                 Ansi::ScrollUp(n) => {}
                 Ansi::ScrollDown(n) => {}
