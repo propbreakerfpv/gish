@@ -4,23 +4,41 @@ use tui::{
     text::{Span, Spans, Text},
 };
 
-use crate::app::App;
+use crate::app::pane::Pane;
 
-pub fn test<'a>(app: &mut App, str: String) -> Text<'a> {
+pub fn render_text<'a>(pane: &mut Pane, str: String) -> Text<'a> {
+    if str.len() > 200 {
+        // panic!("{:?}", str.chars().map(|x| x.to_string()).collect::<Vec<_>>().join("  "));
+    }
     let ansi_parser = AnsiParser {
         content: str.into(),
         pos: 0,
     };
 
     let chars = ansi_parser.parse();
-    add_to_vstdout(app, chars);
-    construct_text(app)
+    add_to_vstdout(pane, chars);
+    construct_text(pane)
 }
 
-fn construct_text<'a>(app: &mut App) -> Text<'a> {
+fn construct_text<'a>(pane: &mut Pane) -> Text<'a> {
     let mut spans = Vec::new();
     let mut span = Vec::new();
-    for line in app.vstdout.clone() {
+    for line in pane.scrollback.clone() {
+        for pos in line {
+            match pos {
+                Pos::Char(char, s) => {
+                    span.push(Span::styled(String::from(char), s));
+                }
+                Pos::Empty => {
+                    span.push(Span::styled(String::from(' '), Style::default()));
+                }
+            }
+        }
+        spans.push(Spans::from(span.clone()));
+        span.clear();
+    }
+
+    for line in pane.vstdout.clone() {
         for pos in line {
             match pos {
                 Pos::Char(char, s) => {
@@ -61,53 +79,81 @@ fn get_color_idx(idx: u8) -> style::Color {
     }
 }
 
-fn add_to_vstdout(app: &mut App, chars: Vec<Char>) {
+fn shift_vstdout(pane: &mut Pane) {
+    for i in 1..pane.vstdout.len() {
+        pane.vstdout[i-1] = pane.vstdout[i].clone();
+    }
+    let last = pane.vstdout.last_mut().unwrap();
+    for i in 0..last.len() {
+        last[i] = Pos::Empty;
+    }
+}
+
+fn add_to_vstdout(pane: &mut Pane, chars: Vec<Char>) {
     let mut style = Style::default();
     for char in chars {
         match char {
             Char::Char(c) => {
-                // handle CR and other "newline" like chars?
+                // todo handle CR and other "newline" like chars?
                 // also hanle overflowing vstdout
                 if c == '\n' {
-                    app.vc.0 = 0;
-                    app.vc.1 += 1;
+                    pane.vc.0 = 0;
+                    if pane.vc.1 + 1 >= pane.vstdout.len() as u16 {
+                        pane.scrollback.push(pane.vstdout.first().unwrap().clone());
+                        pane.scroll.0 += 1;
+                        shift_vstdout(pane);
+                    } else {
+                        pane.vc.1 += 1;
+                    }
                 } else {
-                    app.vstdout[app.vc.1 as usize][app.vc.0 as usize] =
-                        Pos::Char(c, style.clone());
-                    app.vc.0 += 1;
+                    if pane.size.0 > pane.vc.0 {
+                        pane.vstdout[pane.vc.1 as usize][pane.vc.0 as usize] = Pos::Char(c, style.clone());
+                        pane.vc.0 += 1;
+                    } else {
+                        pane.vc.0 = 0;
+                        if pane.vc.1 + 1 >= pane.vstdout.len() as u16 {
+                            pane.scrollback.push(pane.vstdout.first().unwrap().clone());
+                            pane.scroll.0 += 1;
+                            shift_vstdout(pane);
+                        } else {
+                            pane.vc.1 += 1;
+                        }
+                        pane.vstdout[pane.vc.1 as usize][pane.vc.0 as usize] = Pos::Char(c, style.clone());
+                        pane.vc.0 += 1;
+                    }
                 }
             }
             Char::Ansi(ansi) => match ansi {
                 Ansi::CursorUp(n) => {
                     let n: u64 = n.parse().unwrap();
-                    if n < app.vc.1 as u64 {
-                        app.vc.1 -= n as u16;
+                    if n < pane.vc.1 as u64 {
+                        pane.vc.1 -= n as u16;
                     } else {
-                        app.vc.1 = 0;
+                        pane.vc.1 = 0;
                     }
                 }
                 Ansi::CursonDown(n) => {
                     let n: u64 = n.parse().unwrap();
-                    if n < app.vstdout.len() as u64 {
-                        app.vc.1 += n as u16;
+                    if n < pane.vstdout.len() as u64 {
+                        pane.vc.1 += n as u16;
                     } else {
-                        app.vc.1 = app.vstdout.len()as u16 - 1;
+                        pane.vc.1 = pane.vstdout.len()as u16 - 1;
                     }
                 }
                 Ansi::CursorForward(n) => {
                     let n: u64 = n.parse().unwrap();
-                    if n < app.vstdout[0].len() as u64 {
-                        app.vc.0 += n as u16;
+                    if n < pane.vstdout[0].len() as u64 {
+                        pane.vc.0 += n as u16;
                     } else {
-                        app.vc.0 = app.vstdout[0].len()as u16 - 1;
+                        pane.vc.0 = pane.vstdout[0].len()as u16 - 1;
                     }
                 }
                 Ansi::CursorBack(n) => {
                     let n: u64 = n.parse().unwrap();
-                    if n < app.vc.0 as u64 {
-                        app.vc.0 -= n as u16;
+                    if n < pane.vc.0 as u64 {
+                        pane.vc.0 -= n as u16;
                     } else {
-                        app.vc.0 = 0;
+                        pane.vc.0 = 0;
                     }
                 }
                 Ansi::CursorNextLine(n) => {}
@@ -121,8 +167,14 @@ fn add_to_vstdout(app: &mut App, chars: Vec<Char>) {
                         "1" => {
                         }
                         "2" => {
-                            app.vstdout = vec_empty_char(app.size.0, app.size.1);
-                            app.vc = (0, 0);
+                            // todo I think there is a bug where the prompt is not displayed after
+                            // clearing the screen when there is content in the scrollback buffer i
+                            // cant tell yes cuz i think it will be fixed once i change shell to
+                            // read stdout using async
+                            pane.scrollback.clear();
+                            pane.max_scroll = (0, 0);
+                            pane.vstdout = vec_empty_char(pane.size.0, pane.size.1);
+                            pane.vc = (0, 0);
                         }
                         _ => {}
                     }
@@ -409,38 +461,49 @@ impl AnsiParser {
     fn parse(mut self) -> Vec<Char> {
         let mut ret = Vec::new();
         while !self.eof() {
-            ret.push(self.parse_next())
+            let next = self.parse_next();
+            if let Some(n) = next {
+                ret.push(n)
+            } else {
+                break;
+            }
         }
         ret
     }
 
-    fn parse_next(&mut self) -> Char {
+    fn parse_next(&mut self) -> Option<Char> {
         let next = self.consume_next();
         if next == 27 {
             return self.parse_escap_sequences();
         }
-        Char::from(next)
+        Some(Char::from(next))
     }
 
-    fn parse_escap_sequences(&mut self) -> Char {
+    fn parse_escap_sequences(&mut self) -> Option<Char> {
+        if self.eof() {
+            return None;
+        };
         match self.consume_next() {
             // todo C0 control codes. se wikipedia
             91 => {
                 // [
                 self.parse_csi_sequences()
             }
-            v => Char::from(v),
+            v => Some(Char::from(v)),
         }
     }
 
     //should return something
-    fn parse_csi_sequences(&mut self) -> Char {
+    fn parse_csi_sequences(&mut self) -> Option<Char> {
         let args = self.parse_csi_parameter_bytes();
+        if self.eof() {
+            return None;
+        }
         let next = self.consume_next();
 
         // Moves the cursor n (default 1) cells in the given direction. If the
         // cursor is already at the edge of the screen, this has no effect.
-        if next == b'A' {
+        Some(if next == b'A' {
             // cursor up
             Char::Ansi(Ansi::CursorUp(parse_one_arg(args)))
         } else if next == b'B' {
@@ -511,7 +574,7 @@ impl AnsiParser {
             Char::Ansi(Ansi::Sgr(self.parse_sgr(args).unwrap()))
         } else {
             Char::Char(next as char)
-        }
+        })
         // theres some more here but they are multi character and do stuff i dont know if i will
         // suport.
         // the only thing i might need to suport is device status report witch reports the cursor
@@ -550,7 +613,7 @@ impl AnsiParser {
                     color_type = ColorType::Rgb;
                 } else {
                     // todo maybe somekind of developer mode that would show errors for this kind
-                    // of stuff? till this probubly shouldn't panic.
+                    // of stuff? till then this probubly shouldn't panic.
                     panic!("invlaid color type {}", arg)
                     // invalid error
                 }

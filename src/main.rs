@@ -1,11 +1,8 @@
-
-
 // posix spec.
 // https://pubs.opengroup.org/onlinepubs/9699919799/
 
 
 use app::{run_app, App, reset_terminal};
-use shell::run_command;
 use std::{error::Error, io, panic::set_hook};
 use tui::{
     backend::CrosstermBackend,
@@ -44,7 +41,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     app.setup_lua();
 
-    run_command("refresh".to_string(), &mut app);
 
     let res = run_app(&mut terminal, app);
 

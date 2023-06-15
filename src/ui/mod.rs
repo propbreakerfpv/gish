@@ -10,41 +10,35 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     let block = Block::default().style(Style::default().bg(Color::Black));
 
+    for (_location, pane) in app.panes.clone().into_iter() {
+        let mut pane = pane.lock().unwrap();
+        let mut prompt = get_prompt(app);
+        pane.prompt = prompt.clone();
 
-    if app.content.height() as u16 > size.height - 2 {
-        app.scroll = (
-            app.content.height() as u16 - (size.height - 2),
-            app.scroll.1,
-            );
-    }
+        prompt.push_str(pane.cmd_input.clone().as_str());
+        if let Some(char) = pane.cmd_input.chars().last() {
+            if pane.prompt_update {
+                pane.println(char);
+                pane.prompt_update = false;
+            }
+        }
+        let text = pane.content.clone();
 
-    let mut prompt = get_prompt(app);
-    app.prompt = prompt.clone();
+        let main = Paragraph::new(text.clone())
+            .block(block.clone())
+            // messes up cursore position so i think i will have to handle wraping myself?
+            // usefull for debuging though. lol
+            // .wrap(Wrap { trim: false })
+            .scroll(app.scroll);
 
-    prompt.push_str(app.cmd_input.clone().as_str());
-    if let Some(char) = app.cmd_input.chars().last() {
-        if app.prompt_update {
-            app.println(char);
-            app.prompt_update = false;
+        f.render_widget(main, Rect::new(pane.x, pane.y, pane.size.0, pane.size.1));
+
+        auto_sagest(app, pane);
+        for (_, vtext) in &app.vtext {
+            f.render_widget(vtext.p.clone(), vtext.size)
         }
     }
 
-    let text = app.content.clone();
-
-    let main = Paragraph::new(text.clone())
-        .block(block)
-        // messes up cursore position so i think i will have to handle wraping myself?
-        // usefull for debuging though. lol
-        // .wrap(Wrap { trim: false })
-        .scroll(app.scroll);
-        
-
-    f.render_widget(main, size);
-
-    auto_sagest(app);
-    for p in &app.vtext {
-        f.render_widget(p.1.p.clone(), p.1.size)
-    }
 
     match app.mode {
         AppMode::Searching => {
@@ -57,7 +51,12 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             app.vc = (area.x + app.search_input.len() as u16 + 1, area.y + 1)
         }
         AppMode::Normal => {
-            f.set_cursor(app.vc.0, app.vc.1);
+            let pane_ref = app.panes.get_mut(&app.active_pane).unwrap();
+            let pane = pane_ref.lock().unwrap();
+
+            if pane.scroll.0 == pane.max_scroll.0 {
+                f.set_cursor(pane.x + pane.vc.0, pane.y + pane.vc.1);
+            }
         }
         AppMode::Command => {}
     }

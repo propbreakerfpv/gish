@@ -21,3 +21,4 @@ nix = "0.26.2"
 pty = "0.2.2"
 openpty = "0.2.0"
 libc = "0.2.144"
+tokio = {version = "1.28.2", features = ["full"] }
