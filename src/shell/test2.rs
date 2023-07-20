@@ -1,4 +1,17 @@
-use std::{os::{unix::{process::CommandExt, prelude::OsStrExt}, fd::{RawFd, FromRawFd, AsRawFd}}, ptr, io::{self, Read, Write, BufRead, BufReader}, fs::File, cell::RefCell, path::PathBuf, process::{Command, Child}, sync::mpsc::channel, thread, vec, ffi::OsStr};
+use std::{
+    cell::RefCell,
+    ffi::OsStr,
+    fs::File,
+    io::{self, Read, Write},
+    os::{
+        fd::{AsRawFd, FromRawFd, RawFd},
+        unix::{prelude::OsStrExt, process::CommandExt},
+    },
+    path::PathBuf,
+    process::{Child, Command},
+    ptr,
+    vec,
+};
 
 use anyhow::anyhow;
 
@@ -82,7 +95,6 @@ use anyhow::anyhow;
 //     // }
 // }
 
-
 pub struct CommandBuilder {
     pub args: Vec<String>,
     pub path: String,
@@ -91,7 +103,7 @@ impl CommandBuilder {
     pub fn new<T: ToString>(prog: T) -> CommandBuilder {
         CommandBuilder {
             args: Vec::new(),
-            path: prog.to_string()
+            path: prog.to_string(),
         }
     }
     pub fn arg<S: ToString>(&mut self, arg: S) {
@@ -117,7 +129,7 @@ pub struct PtySize {
 pub struct MasterPty {
     pub fd: File,
     pub took_writer: RefCell<bool>,
-    pub tty_name: Option<PathBuf>
+    pub tty_name: Option<PathBuf>,
 }
 
 impl MasterPty {
@@ -140,15 +152,12 @@ pub struct SlavePty {
     pub fd: File,
 }
 
-
 impl SlavePty {
-    pub fn try_clone_reader(&self) -> anyhow::Result<Box<dyn Read + Send>> {
-        let fd = self.fd.try_clone()?;
-        Ok(Box::new(fd))
-    }
+    // pub fn try_clone_reader(&self) -> anyhow::Result<Box<dyn Read + Send>> {
+    //     let fd = self.fd.try_clone()?;
+    //     Ok(Box::new(fd))
+    // }
     pub fn spawn_command(&self, cmd: CommandBuilder) -> anyhow::Result<Child> {
-
-
         let mut cmd = cmd.as_command();
         unsafe {
             cmd.stdin(dup_fd(&self.fd)?)
@@ -206,15 +215,14 @@ pub fn close_random_fds() {
         for entry in dir {
             if let Some(num) = entry
                 .ok()
-                    .map(|e| e.file_name())
-                    .and_then(|s| s.into_string().ok())
-                    .and_then(|n| n.parse::<libc::c_int>().ok())
-                    {
-                        if num > 2 {
-                            fds.push(num);
-                        }
-                    }
-
+                .map(|e| e.file_name())
+                .and_then(|s| s.into_string().ok())
+                .and_then(|n| n.parse::<libc::c_int>().ok())
+            {
+                if num > 2 {
+                    fds.push(num);
+                }
+            }
         }
         for fd in fds {
             unsafe {
@@ -227,7 +235,7 @@ pub fn close_random_fds() {
 pub fn dup_fd(fd: &File) -> anyhow::Result<File> {
     let fd = fd.as_raw_fd();
 
-    let duped = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0)};
+    let duped = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
 
     if duped == -1 {
         let err = std::io::Error::last_os_error();
@@ -238,14 +246,9 @@ pub fn dup_fd(fd: &File) -> anyhow::Result<File> {
             Err(anyhow!("error duping {}", err))
         }
     } else {
-        Ok(unsafe {
-            File::from_raw_fd(duped)  
-        })
+        Ok(unsafe { File::from_raw_fd(duped) })
     }
-
 }
-
-
 
 pub fn open_pty(size: PtySize) -> anyhow::Result<(MasterPty, SlavePty)> {
     let mut master: RawFd = -1;
@@ -259,7 +262,13 @@ pub fn open_pty(size: PtySize) -> anyhow::Result<(MasterPty, SlavePty)> {
     };
 
     let result = unsafe {
-        libc::openpty(&mut master, &mut slave, ptr::null_mut(), ptr::null_mut(), &mut size)
+        libc::openpty(
+            &mut master,
+            &mut slave,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &mut size,
+        )
     };
 
     if result != 0 {
@@ -282,7 +291,6 @@ pub fn open_pty(size: PtySize) -> anyhow::Result<(MasterPty, SlavePty)> {
     cloexec(slave.fd.as_raw_fd()).unwrap();
     Ok((master, slave))
 }
-
 
 pub fn cloexec(fd: RawFd) -> anyhow::Result<()> {
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
@@ -319,6 +327,6 @@ pub fn tty_name(fd: RawFd) -> Option<PathBuf> {
             Some(PathBuf::from(osstr))
         } else {
             None
-        }
+        };
     }
 }

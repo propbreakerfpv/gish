@@ -2,8 +2,8 @@
 // https://pubs.opengroup.org/onlinepubs/9699919799/
 
 
-use app::{run_app, App, reset_terminal};
-use std::{error::Error, io, panic::set_hook};
+use app::{run_app, App, reset_terminal, pane::{PaneLocation, Pane}};
+use std::{error::Error, io, panic::set_hook, process};
 use tui::{
     backend::CrosstermBackend,
     Terminal,
@@ -26,7 +26,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let original_hook = std::panic::take_hook();
     set_hook(Box::new(move |panic| {
         reset_terminal().unwrap();
-        original_hook(panic)
+        original_hook(panic);
+        process::exit(1);
     }));
 
     // setup terminal
@@ -37,7 +38,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     // create app and run it
-    let mut app: App = App::new();
+    let mut app: App<'static> = App::new();
+    let pane = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
+    let size = pane.lock().unwrap().size;
+    pane.lock().unwrap().size = (size.0 / 2, size.1);
+
+    // inserting dbg pane
+    let dbg = Pane::debug();
+    {
+        let mut tmp_dbg = dbg.lock().unwrap();
+        tmp_dbg.size = (size.0 / 2, size.1);
+        tmp_dbg.x = size.0 / 2;
+    }
+    app.panes.hash_map.insert(PaneLocation::default().x(1), dbg);
 
     app.setup_lua();
 

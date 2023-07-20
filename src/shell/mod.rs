@@ -76,6 +76,14 @@ pub fn run_if_builtin(pane: PaneRef, cmd: String) -> Option<()> {
         &_ => None
     }
 }
+
+pub fn after_run_command(mut cmd: String, pane_ref: PaneRef) {
+    let mut pane = pane_ref.lock().unwrap();
+    let prompt = pane.prompt.clone();
+    pane.println(prompt);
+    pane.running_cmd = false;
+}
+
 pub fn new_run_command(mut cmd: String, pane_ref: PaneRef) {
     let path = cmd.split(' ').next().unwrap().to_string();
 
@@ -84,6 +92,9 @@ pub fn new_run_command(mut cmd: String, pane_ref: PaneRef) {
         let mut pane = pane.lock().unwrap();
 
         if cmd.is_empty() {
+            // drop pane to prevent dedlock when we try and look pane_ref in after_run_command
+            drop(pane);
+            after_run_command(cmd, pane_ref);
             return;
         }
 
@@ -98,6 +109,7 @@ pub fn new_run_command(mut cmd: String, pane_ref: PaneRef) {
     }
 
     if run_if_builtin(Arc::clone(&pane_ref), cmd.clone()).is_some() {
+        after_run_command(cmd, pane_ref);
         return;
     }
 
@@ -165,97 +177,6 @@ pub fn new_run_command(mut cmd: String, pane_ref: PaneRef) {
             pane_ref.lock().unwrap().println(output);
         }
     }
-
-    // print the prompt to the screen. this has to be here cuz this is the only place we can run
-    // code after a command has finished running
-    let mut pane = pane_ref.lock().unwrap();
-    let prompt = pane.prompt.clone();
-    pane.println(prompt);
-
+    after_run_command(cmd, pane_ref)
 }
 
-// pub fn run_command(mut cmd: String, app: &mut App) {
-//     if cmd.is_empty() {
-//         return;
-//     }
-//
-//     app.cmd_input.clear();
-//     let path = cmd.split(' ').next().unwrap().to_string();
-//
-//     if let Some(alais) = app.alais.get(&path) {
-//         let trimed_cmd = cmd.trim_start_matches(&path);
-//         let mut alais = alais.clone();
-//         alais.push_str(trimed_cmd);
-//         cmd = alais.trim().to_string();
-//     }
-//
-//     if run_if_builtin(app, cmd.clone()).is_some() {
-//         return;
-//     }
-//
-//
-//
-//
-//     let mut p = Command::new(&path);
-//     p.stdout(Stdio::piped());
-//
-//     let mut iter = cmd.split(' ');
-//     iter.next();
-//     for arg in iter {
-//         p.arg(arg);
-//     }
-//
-//     let p = match p.spawn() {
-//         Ok(v) => v,
-//         Err(_) => {
-//             // todo this should have a diferent message depending on the error. ie permission
-//             // denyed, command not found, etc...
-//             let msg = format!("`{}` command not found\n", path);
-//             app.println(msg);
-//             return;
-//         }
-//     };
-//
-//     let output = p.wait_with_output().unwrap();
-//
-//     let content: String = output.stdout.iter().fold(String::new(), |mut acc, &x| {
-//         acc.push(x as char);
-//         acc
-//     });
-//     
-//     let new_content = test(app, content);
-//     app.content = new_content;
-//     // app.content.extend(Text::from(content));
-//
-//     // let stdout = p.stdout.unwrap();
-//     // let mut bufr = BufReader::new(stdout);
-//     //
-//     // let mut buf = vec![];
-//     // loop {
-//     //     if bufr.(&mut buf).unwrap() == 0 {
-//     //         break;
-//     //     }
-//     //     let line: String = buf.iter().fold(String::new(), |mut acc, &x| {
-//     //         acc.push(x as char);
-//     //         acc
-//     //     });
-//     //     app.content.extend(Text::from(line));
-//     //     buf.clear();
-//     // }
-//     //
-//     // while let Ok(n_bytes) = stdout.read(&mut buf) {
-//     //     if n_bytes == 0 {
-//     //         break
-//     //     }
-//     //     let line: String = buf.iter().fold(String::new(), |mut acc, &x| {
-//     //         acc.push(x as char);
-//     //         acc
-//     //     });
-//     //     app.content.extend(Text::from(line));
-//     //     buf.clear();
-//     // }
-// }
-//
-//
-//
-//

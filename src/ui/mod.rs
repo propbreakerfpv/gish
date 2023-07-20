@@ -1,17 +1,21 @@
-use tui::{backend::Backend, Frame, text::{Text, Spans}, widgets::{Block, Paragraph, Borders, Clear}, style::{Style, Color}, layout::{Rect, Layout, Direction, Constraint}};
-use crate::{app::{App, AppMode, auto_comp::auto_sagest }, lua::{run_ui_update, get_prompt}};
-
-
+use crate::{
+    app::{auto_comp::auto_sagest, App, AppMode},
+    lua::{get_prompt, run_ui_update},
+};
+use tui::{
+    backend::Backend,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Style},
+    text::{Spans, Text},
+    widgets::{Block, Borders, Clear, Paragraph},
+    Frame,
+};
 
 pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
-
     let size = f.size();
 
-
-    let block = Block::default().style(Style::default().bg(Color::Black));
-
-    for (_location, pane) in app.panes.clone().into_iter() {
-        let mut pane = pane.lock().unwrap();
+    for (_location, pane_ref) in app.panes.clone().hash_map.into_iter() {
+        let mut pane = pane_ref.lock().unwrap();
         let mut prompt = get_prompt(app);
         pane.prompt = prompt.clone();
 
@@ -24,21 +28,28 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         }
         let text = pane.content.clone();
 
+        let mut block = Block::default().style(Style::default().bg(Color::Black));
+        if pane.x > 0 {
+            block = block.borders(Borders::LEFT);
+        }
+        if pane.y > 0 {
+            block = block.borders(Borders::TOP);
+        }
+
         let main = Paragraph::new(text.clone())
-            .block(block.clone())
+            .block(block)
             // messes up cursore position so i think i will have to handle wraping myself?
             // usefull for debuging though. lol
             // .wrap(Wrap { trim: false })
-            .scroll(app.scroll);
+            .scroll(pane.scroll);
 
         f.render_widget(main, Rect::new(pane.x, pane.y, pane.size.0, pane.size.1));
 
-        auto_sagest(app, pane);
-        for (_, vtext) in &app.vtext {
+        auto_sagest(app, &mut pane);
+        for (_, vtext) in &pane.vtext {
             f.render_widget(vtext.p.clone(), vtext.size)
         }
     }
-
 
     match app.mode {
         AppMode::Searching => {
@@ -51,7 +62,7 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             app.vc = (area.x + app.search_input.len() as u16 + 1, area.y + 1)
         }
         AppMode::Normal => {
-            let pane_ref = app.panes.get_mut(&app.active_pane).unwrap();
+            let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
             let pane = pane_ref.lock().unwrap();
 
             if pane.scroll.0 == pane.max_scroll.0 {
@@ -61,7 +72,7 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         AppMode::Command => {}
     }
 
-    let bar_text = run_ui_update(app, "render_status_bar") ;
+    let bar_text = run_ui_update(app, "render_status_bar");
 
     let status_bar = Paragraph::new(Text::from(Spans::from(bar_text)));
     let area = Rect::new(0, size.height - 1, size.width, 1);
@@ -75,23 +86,23 @@ fn search_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .direction(Direction::Vertical)
         .constraints(
             [
-            Constraint::Percentage((100 - percent_y) / 8),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 8),
+                Constraint::Percentage((100 - percent_y) / 8),
+                Constraint::Percentage(percent_y),
+                Constraint::Percentage((100 - percent_y) / 8),
             ]
             .as_ref(),
-            )
+        )
         .split(r);
 
     Layout::default()
         .direction(Direction::Horizontal)
         .constraints(
             [
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
+                Constraint::Percentage((100 - percent_x) / 2),
+                Constraint::Percentage(percent_x),
+                Constraint::Percentage((100 - percent_x) / 2),
             ]
             .as_ref(),
-            )
+        )
         .split(popup_layout[1])[1]
 }

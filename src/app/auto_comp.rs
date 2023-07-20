@@ -15,7 +15,10 @@ pub fn on_comp(mut pane: MutexGuard<Pane>) -> String {
     String::new()
 }
 
-pub fn auto_sagest(app: &mut App, mut pane: MutexGuard<Pane>) {
+pub fn auto_sagest(app: &mut App, pane: &mut MutexGuard<Pane>) {
+    if ! pane.is_active {
+        return;
+    }
     if ! pane.cmd_input.contains(' ') && pane.scroll.0 == pane.max_scroll.0 {
         if app.config.only_sagest_when_typing {
         }
@@ -24,11 +27,11 @@ pub fn auto_sagest(app: &mut App, mut pane: MutexGuard<Pane>) {
             sagest = sagest[pane.cmd_input.len()..sagest.len()].to_string();
         }
 
-    let text = Spans::from(Span::styled(sagest.clone(), Style::default().fg(Color::Rgb(89, 89, 89))));
+        let text = Spans::from(Span::styled(sagest.clone(), Style::default().fg(Color::Rgb(89, 89, 89))));
         let p = Paragraph::new(text);
-        let size = Rect::new(pane.vc.0, pane.vc.1, sagest.len() as u16, 1);
+        let size = Rect::new(pane.vc.0 + pane.x, pane.vc.1 + pane.y, sagest.len() as u16, 1);
         pane.vtext.insert(String::from("auto_sagest"), VText { p, size });
-    } else {
+    } else if ! pane.running_cmd {
         let p = Paragraph::new(Text::default());
         let size = Rect::new(pane.vc.0, pane.vc.1, 0, 1);
         pane.vtext.insert(String::from("auto_sagest"), VText { p, size });
@@ -82,7 +85,6 @@ fn get_cmds(prefix: String, pane: &MutexGuard<Pane>) -> Vec<String> {
         for file in fs::read_dir(&pwd).unwrap() {
             let mut name = pwd.clone();
             name.push_str(file.unwrap().file_name().to_str().unwrap());
-            // panic!("{} {}", name, prefix);
             if p.len() >= name.len() {
                 if &p[0..name.len()] == name.as_str() {
                     rec_find_file_with_prefix(&p, name).iter().for_each(|x| out.push(x.clone()));

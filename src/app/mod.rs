@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, error::Error, fs, io, env, thread, time::Duration};
+use std::{cell::RefCell, collections::HashMap, error::Error, fs, io, env, time::Duration};
 
 use crossterm::{
     event::{self, Event, KeyCode, MouseEventKind},
@@ -13,7 +13,7 @@ use tui::{
 
 use crate::{ansi::Pos, lua::{setup_lua, self}, ui::ui};
 
-use self::{auto_comp::on_comp, config::Config, pane::{PaneLocation, Pane, PaneRef}};
+use self::{auto_comp::on_comp, config::Config, pane::{PaneLocation, Pane, Panes, PaneType}};
 
 pub mod auto_comp;
 pub mod config;
@@ -59,7 +59,7 @@ pub struct App<'a> {
     pub cmds: Vec<String>,
     pub lua: RefCell<Lua<'a>>,
     pub windows: Vec<Window>,
-    pub panes: HashMap<PaneLocation, PaneRef<'a>>,
+    pub panes: Panes<'a>,
     pub active_window: u16,
     pub active_pane: PaneLocation,
 }
@@ -70,8 +70,6 @@ pub struct VText<'a> {
     pub size: Rect, 
 }
 
-// pub type LuaApp = String;
-
 impl<'a> App<'a> {
     pub fn new() -> App<'static> {
         let (col, row) = crossterm::terminal::size().unwrap();
@@ -79,7 +77,7 @@ impl<'a> App<'a> {
         let mut app = App {
             search_input: String::new(),
             cmd_input: String::new(),
-            size: (200, 50),
+            size: (col, row),
             vtext: HashMap::new(),
             content: Text::from(""),
             vc: (0, 0),
@@ -99,35 +97,39 @@ impl<'a> App<'a> {
             cmds: get_cmds(),
             lua: RefCell::new(Lua::new()),
             windows: vec![],
-            panes: HashMap::new(),
+            panes: Panes::new(),
             active_window: 1,
             active_pane: PaneLocation::default(),
         };
-        let pane_ref = Pane::new();
-        app.panes.insert(PaneLocation::default(), pane_ref);
+        let pane_ref = Pane::new(app.size);
+        {
+            let mut pane = pane_ref.lock().unwrap();
+            pane.is_active = true;
+        }
+        app.panes.hash_map.insert(PaneLocation::default(), pane_ref);
         app
     }
     pub fn setup_lua(&self) {
-    setup_lua(self);
+        setup_lua(self);
     }
     // pub fn add_content(&mut self, content: String) {
     //
     //     Text::from(content);
     // }
     pub fn println<T: ToString>(&mut self, msg: T) {
-        // todo make this call println on the active pane or smth
-        let pane_ref = self.panes.get_mut(&self.active_pane).unwrap();
+        let pane_ref = self.panes.hash_map.get_mut(&self.active_pane).unwrap();
         let mut pane = pane_ref.lock().unwrap();
         pane.println(msg)
     }
-    // pub fn print_span(&mut self, msg: Vec<Span<'a>>) {
-    //     self.content.extend(Text::from(Spans::from(msg)));
-    // }
 
-    // fn write_char(&mut self, char: Char) {
-    //     self.vstdout[self.vc.1 as usize][self.vc.0 as usize] = char;
-    //     self.vc.0 += 1;
-    // }
+    pub fn dbg<T: ToString>(&mut self, msg: T) {
+        // todo make this find any debug panes and print to them. should also maybe be able to
+        // specify a specific pane.
+        let pane = self.panes.hash_map.get(&PaneLocation::default().x(1)).unwrap().lock().unwrap();
+        if let PaneType::Debug = pane.pane_type {
+            pane.cmd_tx.send(msg.to_string()).unwrap();
+        }
+    }
     pub fn update_app(&mut self) {
         let path = env::var("PATH").unwrap();
         if self.path != path {
@@ -135,6 +137,29 @@ impl<'a> App<'a> {
             self.cmds = get_cmds();
         }
     }
+
+    // fn add_pane(&mut self) {
+    //     let new_pane_ref;
+    //     let location;
+    //     let active_pane = self.active_pane.clone();
+    //     {
+    //         let pane_ref = self.panes.hash_map.get(&self.active_pane).unwrap();
+    //         let mut pane = pane_ref.lock().unwrap();
+    //
+    //         if pane.size.0 > pane.size.1 {
+    //             pane.size.0 = pane.size.0 / 2;
+    //             location = active_pane.plus_x(1);
+    //         } else {
+    //             pane.size.1 = pane.size.1 / 2;
+    //             location = active_pane.plus_y(1);
+    //         }
+    //         let size = pane.size;
+    //
+    //         new_pane_ref = Pane::new(size);
+    //         // let new_pane = new_pane_ref.lock().unwrap();
+    //     }
+    //     self.panes.hash_map.insert(location, new_pane_ref);
+    // }
 }
 
 fn get_cmds() -> Vec<String> {
@@ -160,6 +185,7 @@ fn get_cmds() -> Vec<String> {
 #[derive(Debug, Clone)]
 pub enum AppMode {
     Normal,
+    // todo figure out if searching is going to be a mode
     Searching,
     Command,
 }
@@ -190,12 +216,17 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
     let mut update = true;
 
     loop {
-        if app.scroll.0 > app.max_scroll.0 {
-            app.max_scroll = app.scroll;
+        {
+            let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
+            let mut pane = pane_ref.lock().unwrap();
+            if pane.scroll.0 > pane.max_scroll.0 {
+                pane.max_scroll = pane.scroll;
+            }
         }
 
         if update {
             terminal.draw(|f| ui(f, &mut app))?;
+            update = false;
         }
 
 
@@ -204,9 +235,10 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
         if event::poll(Duration::from_millis(1))? {
             event = event::read()?;
         } else {
-            for (_, pane) in app.panes.clone() {
-                if pane.lock().unwrap().update_rx.recv_timeout(Duration::from_millis(1/app.panes.len() as u64)).is_ok() {
+            for (_, pane) in app.panes.hash_map.clone() {
+                if pane.lock().unwrap().update_rx.recv_timeout(Duration::from_millis(1/app.panes.hash_map.len() as u64)).is_ok() {
                     update = true;
+                    break;
                 }
             }
             continue;
@@ -215,22 +247,21 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
             Event::Mouse(e) => {
                 match e.kind {
                     MouseEventKind::ScrollUp => {
-                        if app.config.scroll_amount > app.scroll.0 {
+                        let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
+                        let mut pane = pane_ref.lock().unwrap();
+                        if app.config.scroll_amount > pane.scroll.0 {
                             app.scroll.0 = 0;
                         } else {
-                            app.scroll.0 -= app.config.scroll_amount;
+                            pane.scroll.0 -= app.config.scroll_amount;
                         }
-                        // if app.scroll.0 - app.config.scroll_amount > 0 {
-                        //     app.scroll.0 -= app.config.scroll_amount;
-                        // } else if app.scroll.0 > 0 {
-                        //     app.scroll.0 = 0;
-                        // }
                     }
                     MouseEventKind::ScrollDown => {
-                        if app.scroll.0 + app.config.scroll_amount < app.max_scroll.0 {
-                            app.scroll.0 += app.config.scroll_amount;
-                        } else if app.scroll.0 < app.max_scroll.0 {
-                            app.scroll.0 = app.max_scroll.0;
+                        let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
+                        let mut pane = pane_ref.lock().unwrap();
+                        if pane.scroll.0 + app.config.scroll_amount < pane.max_scroll.0 {
+                            pane.scroll.0 += app.config.scroll_amount;
+                        } else if pane.scroll.0 < pane.max_scroll.0 {
+                            pane.scroll.0 = pane.max_scroll.0;
                         }
                     }
                     _ => {}
@@ -247,21 +278,21 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
                         // }
                         KeyCode::Home => {
                             // todo this should not be here. just for testing lol
-                            if app.max_scroll < app.scroll {
-                                app.max_scroll = app.scroll;
-                            }
-                            app.scroll.0 = 0;
+                            // app.add_pane();
                         }
                         KeyCode::Char(c) => {
-                            let pane_ref = app.panes.get_mut(&app.active_pane).unwrap();
-                            let mut pane = pane_ref.lock().unwrap();
-                            pane.cmd_history_idx = 0;
-                            pane.cmd_input.push(c);
-                            pane.prompt_update = true;
-                            pane.scroll = (pane.content.height() as u16 - pane.vstdout.len() as u16, pane.scroll.1);
+                            let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
+                            {
+                                let mut pane = pane_ref.lock().unwrap();
+                                pane.cmd_history_idx = 0;
+                                pane.cmd_input.push(c);
+                                pane.prompt_update = true;
+                                pane.scroll = (pane.content.height() as u16 - pane.vstdout.len() as u16, pane.scroll.1);
+                            }
+                            update = true;
                         }
                         KeyCode::Backspace => {
-                            let pane_ref = app.panes.get_mut(&app.active_pane).unwrap();
+                            let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
                             let mut pane = pane_ref.lock().unwrap();
 
                             if pane.cmd_input.pop().is_some() {
@@ -269,44 +300,48 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
                             }
                         }
                         KeyCode::Tab => {
-                            let pane_ref = app.panes.get_mut(&app.active_pane).unwrap();
+                            let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
                             let pane = pane_ref.lock().unwrap();
                             on_comp(pane);
                         }
                         KeyCode::Enter => {
-                            let pane_ref = app.panes.get_mut(&app.active_pane).unwrap();
-                            let mut pane = pane_ref.lock().unwrap();
+                            let cmd = {
+                                let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
+                                let mut pane = pane_ref.lock().unwrap();
 
-                            pane.scroll = (pane.content.height() as u16 - pane.vstdout.len() as u16, pane.scroll.1);
+                                pane.scroll = (pane.content.height() as u16 - pane.vstdout.len() as u16, pane.scroll.1);
 
-                            if pane.cmd_history_idx > 0 {
-                                // todo this should not be get_mut but the barrow checker is playing
-                                // games with me so thats what it is for now.
-                                let cmd_history_len = pane.cmd_history.clone().len();
-                                let cmd_history_idx = pane.cmd_history_idx;
-                                let a =pane 
-                                    .cmd_history
-                                    .get_mut(cmd_history_len - cmd_history_idx);
-                                if let Some(v) = a {
-                                    pane.cmd_input = v.clone();
-                                }
-                            }
-                            let mut prompt = pane.prompt.clone();
-                            let cmd_input = pane.cmd_input.clone();
-                            if !pane.cmd_history.is_empty() {
-                                if let Some(v) = pane.cmd_history.last() {
-                                    if *v != pane.cmd_input {
-                                        pane.cmd_history.push(cmd_input);
+                                if pane.cmd_history_idx > 0 {
+                                    // todo this should not be get_mut but the barrow checker is playing
+                                    // games with me so thats what it is for now.
+                                    let cmd_history_len = pane.cmd_history.clone().len();
+                                    let cmd_history_idx = pane.cmd_history_idx;
+                                    let a =pane 
+                                        .cmd_history
+                                        .get_mut(cmd_history_len - cmd_history_idx);
+                                    if let Some(v) = a {
+                                        pane.cmd_input = v.clone();
                                     }
                                 }
-                            } else {
-                                pane.cmd_history.push(cmd_input);
-                            }
-                            prompt.push_str(pane.cmd_input.clone().as_str());
-                            pane.println('\n');
+                                let mut prompt = pane.prompt.clone();
+                                let cmd_input = pane.cmd_input.clone();
+                                if !pane.cmd_history.is_empty() {
+                                    if let Some(v) = pane.cmd_history.last() {
+                                        if *v != pane.cmd_input {
+                                            pane.cmd_history.push(cmd_input);
+                                        }
+                                    }
+                                } else {
+                                    pane.cmd_history.push(cmd_input);
+                                }
+                                prompt.push_str(pane.cmd_input.clone().as_str());
+                                pane.println('\n');
 
-                            let cmd = pane.cmd_input.clone();
-                            pane.run_command(cmd);
+                                let cmd = pane.cmd_input.clone();
+                                pane.run_command(cmd.clone());
+                                cmd
+                            };
+                            app.dbg(format!("running command {}", cmd));
                             // todo make this run some version of app.update_app()
                             // app.update_app();
                         }
