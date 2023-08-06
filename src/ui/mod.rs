@@ -1,5 +1,5 @@
 use crate::{
-    app::{auto_comp::auto_sagest, App, AppMode},
+    app::{App, AppMode},
     lua::{get_prompt, run_ui_update},
 };
 use tui::{
@@ -17,15 +17,7 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     for (_location, pane_ref) in app.panes.clone().hash_map.into_iter() {
         let mut pane = pane_ref.lock().unwrap();
         let mut prompt = get_prompt(app);
-        pane.prompt = prompt.clone();
 
-        prompt.push_str(pane.cmd_input.clone().as_str());
-        if let Some(char) = pane.cmd_input.chars().last() {
-            if pane.prompt_update {
-                pane.println(char);
-                pane.prompt_update = false;
-            }
-        }
         let text = pane.content.clone();
 
         let mut block = Block::default().style(Style::default().bg(Color::Black));
@@ -45,7 +37,7 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
         f.render_widget(main, Rect::new(pane.x, pane.y, pane.size.0, pane.size.1));
 
-        auto_sagest(app, &mut pane);
+        // auto_sagest(app, &mut pane);
         for (_, vtext) in &pane.vtext {
             f.render_widget(vtext.p.clone(), vtext.size)
         }

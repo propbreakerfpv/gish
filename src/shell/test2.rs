@@ -10,7 +10,7 @@ use std::{
     path::PathBuf,
     process::{Child, Command},
     ptr,
-    vec,
+    vec, sync::Arc,
 };
 
 use anyhow::anyhow;
@@ -126,6 +126,7 @@ pub struct PtySize {
     pub px_height: u16,
 }
 
+#[derive(Debug)]
 pub struct MasterPty {
     pub fd: File,
     pub took_writer: RefCell<bool>,

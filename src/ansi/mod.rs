@@ -107,6 +107,9 @@ fn add_to_vstdout(pane: &mut Pane, chars: Vec<Char>) {
                     }
                 } else {
                     if pane.size.0 > pane.vc.0 {
+                        // if pane.vc.1 >= 100 {
+                        //     panic!("vc {} {} size {} {} c is {} last ansi {:?}", pane.vc.0, pane.vc.1, pane.size.0, pane.size.1, c, ansis.last().unwrap());
+                        // }
                         pane.vstdout[pane.vc.1 as usize][pane.vc.0 as usize] = Pos::Char(c, style.clone());
                         pane.vc.0 += 1;
                     } else {
@@ -163,6 +166,8 @@ fn add_to_vstdout(pane: &mut Pane, chars: Vec<Char>) {
                 Ansi::EraseInDisplay(n) => {
                     match n.as_str() {
                         "" | "0" => {
+                            //  clear from cursor to end of screen
+                            //  nvimtodo used when runing :q
                         }
                         "1" => {
                         }
@@ -287,6 +292,8 @@ fn add_to_vstdout(pane: &mut Pane, chars: Vec<Char>) {
                     }
                 }
             },
+            Char::BEL => {}
+            Char::OSC => {}
         }
     }
 }
@@ -299,6 +306,8 @@ pub enum Pos {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Char {
+    BEL,
+    OSC,
     Ansi(Ansi),
     Char(char),
 }
@@ -473,10 +482,18 @@ impl AnsiParser {
 
     fn parse_next(&mut self) -> Option<Char> {
         let next = self.consume_next();
-        if next == 27 {
-            return self.parse_escap_sequences();
+        // todo C0 control codes. se wikipedia
+        match next {
+            27 => {
+                return self.parse_escap_sequences();
+            }
+            7 => {
+                return Some(Char::BEL);
+            }
+            _ => {
+                return Some(Char::from(next));
+            }
         }
-        Some(Char::from(next))
     }
 
     fn parse_escap_sequences(&mut self) -> Option<Char> {
@@ -484,16 +501,41 @@ impl AnsiParser {
             return None;
         };
         match self.consume_next() {
-            // todo C0 control codes. se wikipedia
+            // todo Fe codes se wiki
             91 => {
                 // [
                 self.parse_csi_sequences()
             }
+            93 => {
+                // ] os command
+                self.parse_os_command()
+            }
             v => Some(Char::from(v)),
         }
     }
+    fn parse_os_command(&mut self) -> Option<Char> {
+        let mut str = String::new();
+        loop {
+            if self.eof() {
+                return None;
+                // break;
+            }
+            let char = match self.parse_next() {
+                Some(v) => v,
+                None => return None,
+            };
+            if let Char::BEL = char {
+                print!("\x1b]{}\x07", str);
+                return Some(Char::OSC);
+                // break;
+            }
+            if let Char::Char(c) = char {
+                str.push(c);
+            }
+        }
+        // todo!();
+    }
 
-    //should return something
     fn parse_csi_sequences(&mut self) -> Option<Char> {
         let args = self.parse_csi_parameter_bytes();
         if self.eof() {

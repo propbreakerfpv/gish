@@ -5,14 +5,14 @@ use std::{
         mpsc::{channel, Receiver, Sender},
         Arc, Mutex,
     },
-    thread,
+    thread, io::{self, BufReader, BufRead},
 };
 
 use tui::text::Text;
 
 use crate::{
     ansi::{render_text, Pos},
-    shell::new_run_command,
+    shell::test2::{open_pty, PtySize, MasterPty, CommandBuilder},
 };
 
 use super::{get_cmds, vec_empty_pos, VText};
@@ -207,10 +207,6 @@ pub struct Pane<'a> {
     pub vstdout: Vec<Vec<Pos>>,
     pub scrollback: Vec<Vec<Pos>>,
     pub mode: PaneMode,
-    pub prompt: String,
-    pub prompt_update: bool,
-    pub cmd_history: Vec<String>,
-    pub cmd_history_idx: usize,
     pub scroll: (u16, u16),
     pub max_scroll: (u16, u16),
     pub path: String,
@@ -228,6 +224,7 @@ impl<'a> Pane<'a> {
         let (col, row) = crossterm::terminal::size().unwrap();
         let (cmd_tx, cmd_rx) = channel();
         let (update_tx, update_rx) = channel();
+        let pair = open_pty(PtySize { row: 50, col: 80, px_width: 0, px_height: 0 }).unwrap();
         let pane = Pane {
             pane_type: PaneType::Debug,
             cmd_input: String::new(),
@@ -239,10 +236,6 @@ impl<'a> Pane<'a> {
             vc: (0, 0),
             vstdout: vec_empty_pos(col, row - 2),
             scrollback: Vec::new(),
-            prompt: String::new(),
-            prompt_update: false,
-            cmd_history: Vec::new(),
-            cmd_history_idx: 0,
             scroll: (0, 0),
             max_scroll: (0, 0),
             path: env::var("PATH").unwrap(),
@@ -279,6 +272,7 @@ impl<'a> Pane<'a> {
         let (col, row) = crossterm::terminal::size().unwrap();
         let (cmd_tx, cmd_rx) = channel();
         let (update_tx, update_rx) = channel();
+        // let pty = open_pty();
         let pane = Pane {
             pane_type: PaneType::Normal,
             cmd_input: String::new(),
@@ -290,10 +284,6 @@ impl<'a> Pane<'a> {
             vc: (0, 0),
             vstdout: vec_empty_pos(col, row - 2),
             scrollback: Vec::new(),
-            prompt: String::new(),
-            prompt_update: false,
-            cmd_history: Vec::new(),
-            cmd_history_idx: 0,
             scroll: (0, 0),
             max_scroll: (0, 0),
             path: env::var("PATH").unwrap(),
@@ -310,22 +300,99 @@ impl<'a> Pane<'a> {
         let pane = Arc::new(Mutex::new(pane));
         let i_pane = Arc::clone(&pane);
 
+        // we need to create a pty and insted of running the commands in this program start some
+        // form of shell(zsh bash etc) and have that handle running each command. the only reson we
+        // cant do it in the program is we have to drop the master and slave pty every time we run
+        // a program and we dont want to create a new pty for every command that is run.
         thread::spawn(move || {
-            loop {
-                // wait for a command to be sent then run it. if recv failes(main thread panics)
-                // then we break and exit this thread.
+            let pair = open_pty(PtySize { row: 50, col: 80, px_width: 0, px_height: 0 }).unwrap();
+            // let pair = (&pair.0, &pair.1);
 
-                let cmd = match cmd_rx.recv() {
-                    Ok(v) => v,
-                    Err(_) => {
-                        // todo somehow kill the pane when we break. ie, make it so the user sees it
-                        // disappear
+            let c = CommandBuilder::new("/bin/bash");
+            // let mut iter = cmd.split(' ');
+            // if iter.next().is_some() {
+            //     iter.for_each(|x| c.arg(x.to_string()));
+            // }
+
+            let mut child = pair.1.spawn_command(c).unwrap();
+
+            // drop slave
+            drop(pair.1);
+
+            let (tx, rx) = channel();
+            let reader = pair.0.try_clone_reader().unwrap();
+
+
+            thread::spawn(move || {
+                let mut r = BufReader::with_capacity(1024 * 128, reader);
+                loop {
+                    let len = {
+                        let buffer = match r.fill_buf() {
+                            Ok(v) => v,
+                            Err(_) => break,
+                        };
+                        let s: String = buffer.iter().map(|x| *x as char).collect();
+                        tx.send(s).unwrap();
+                        buffer.len()
+                    };
+                    if len == 0 {
                         break;
                     }
-                };
+                    r.consume(len);
 
-                new_run_command(cmd, Arc::clone(&i_pane));
+                }
+            });
+
+            {
+                let mut writer = pair.0.take_writer().unwrap();
+
+                // if you want to send data to the child youd set `to_write` to that data
+                // let to_write = "";
+                // if !to_write.is_empty() {
+                thread::spawn(move || {
+                    // let mut stdin = io::stdin();
+                    // let a = cmd_rx.recv().unwrap();
+                    loop {
+                        let mut cmd = cmd_rx.recv().unwrap();
+                        // panic!("{}", cmd);
+                        // cmd.push('\n');
+                        writer.write(cmd.as_bytes()).unwrap();
+                    }
+                });
+                // }
             }
+
+            thread::spawn(move || {
+                child.wait().unwrap();
+                panic!("bash just exited");
+                drop(pair.0);
+            });
+
+            loop {
+                let output = match rx.recv() {
+                    Ok(v) => v,
+                    Err(_) => break,
+                };
+                {
+                    i_pane.lock().unwrap().println(output);
+                }
+            }
+
+            // loop {
+            //     // wait for a command to be sent then run it. if recv failes(main thread panics)
+            //     // then we break and exit this thread.
+            //
+            //     let cmd = match cmd_rx.recv() {
+            //         Ok(v) => v,
+            //         Err(_) => {
+            //             // todo somehow kill the pane when we break. ie, make it so the user sees it
+            //             // disappear
+            //             break;
+            //         }
+            //     };
+            //
+            //     // run_command(cmd, Arc::clone(&i_pane), pair);
+            // }
         });
         pane
     }
@@ -345,5 +412,6 @@ impl<'a> Pane<'a> {
     pub fn run_command(&mut self, cmd: String) {
         self.running_cmd = true;
         self.cmd_tx.send(cmd).unwrap();
+        self.cmd_input.clear();
     }
 }

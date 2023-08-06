@@ -13,7 +13,7 @@ use tui::{
 
 use crate::{ansi::Pos, lua::{setup_lua, self}, ui::ui};
 
-use self::{auto_comp::on_comp, config::Config, pane::{PaneLocation, Pane, Panes, PaneType}};
+use self::{config::Config, pane::{PaneLocation, Pane, Panes, PaneType}};
 
 pub mod auto_comp;
 pub mod config;
@@ -229,20 +229,19 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
             update = false;
         }
 
-
-
         let event;
         if event::poll(Duration::from_millis(1))? {
             event = event::read()?;
         } else {
             for (_, pane) in app.panes.hash_map.clone() {
-                if pane.lock().unwrap().update_rx.recv_timeout(Duration::from_millis(1/app.panes.hash_map.len() as u64)).is_ok() {
+                if pane.lock().unwrap().update_rx.recv_timeout(Duration::from_millis(1 / app.panes.hash_map.len() as u64)).is_ok() {
                     update = true;
                     break;
                 }
             }
             continue;
         }
+
         match event {
             Event::Mouse(e) => {
                 match e.kind {
@@ -282,14 +281,8 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
                         }
                         KeyCode::Char(c) => {
                             let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
-                            {
-                                let mut pane = pane_ref.lock().unwrap();
-                                pane.cmd_history_idx = 0;
-                                pane.cmd_input.push(c);
-                                pane.prompt_update = true;
-                                pane.scroll = (pane.content.height() as u16 - pane.vstdout.len() as u16, pane.scroll.1);
-                            }
-                            update = true;
+                            let mut pane = pane_ref.lock().unwrap();
+                            pane.run_command(String::from(c));
                         }
                         KeyCode::Backspace => {
                             let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
@@ -300,51 +293,55 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Resu
                             }
                         }
                         KeyCode::Tab => {
-                            let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
-                            let pane = pane_ref.lock().unwrap();
-                            on_comp(pane);
+                            // let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
+                            // let pane = pane_ref.lock().unwrap();
+                            // on_comp(pane);
                         }
                         KeyCode::Enter => {
-                            let cmd = {
-                                let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
-                                let mut pane = pane_ref.lock().unwrap();
-
-                                pane.scroll = (pane.content.height() as u16 - pane.vstdout.len() as u16, pane.scroll.1);
-
-                                if pane.cmd_history_idx > 0 {
-                                    // todo this should not be get_mut but the barrow checker is playing
-                                    // games with me so thats what it is for now.
-                                    let cmd_history_len = pane.cmd_history.clone().len();
-                                    let cmd_history_idx = pane.cmd_history_idx;
-                                    let a =pane 
-                                        .cmd_history
-                                        .get_mut(cmd_history_len - cmd_history_idx);
-                                    if let Some(v) = a {
-                                        pane.cmd_input = v.clone();
-                                    }
-                                }
-                                let mut prompt = pane.prompt.clone();
-                                let cmd_input = pane.cmd_input.clone();
-                                if !pane.cmd_history.is_empty() {
-                                    if let Some(v) = pane.cmd_history.last() {
-                                        if *v != pane.cmd_input {
-                                            pane.cmd_history.push(cmd_input);
-                                        }
-                                    }
-                                } else {
-                                    pane.cmd_history.push(cmd_input);
-                                }
-                                prompt.push_str(pane.cmd_input.clone().as_str());
-                                pane.println('\n');
-
-                                let cmd = pane.cmd_input.clone();
-                                pane.run_command(cmd.clone());
-                                cmd
-                            };
-                            app.dbg(format!("running command {}", cmd));
-                            // todo make this run some version of app.update_app()
-                            // app.update_app();
+                            let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
+                            let mut pane = pane_ref.lock().unwrap();
+                            pane.run_command(String::from("\n"));
                         }
+                        //     let cmd = {
+                        //         let pane_ref = app.panes.hash_map.get_mut(&app.active_pane).unwrap();
+                        //         let mut pane = pane_ref.lock().unwrap();
+                        //
+                        //         pane.scroll = (pane.content.height() as u16 - pane.vstdout.len() as u16, pane.scroll.1);
+                        //
+                        //         if pane.cmd_history_idx > 0 {
+                        //             // todo this should not be get_mut but the barrow checker is playing
+                        //             // games with me so thats what it is for now.
+                        //             let cmd_history_len = pane.cmd_history.clone().len();
+                        //             let cmd_history_idx = pane.cmd_history_idx;
+                        //             let a =pane 
+                        //                 .cmd_history
+                        //                 .get_mut(cmd_history_len - cmd_history_idx);
+                        //             if let Some(v) = a {
+                        //                 pane.cmd_input = v.clone();
+                        //             }
+                        //         }
+                        //         let mut prompt = pane.prompt.clone();
+                        //         let cmd_input = pane.cmd_input.clone();
+                        //         if !pane.cmd_history.is_empty() {
+                        //             if let Some(v) = pane.cmd_history.last() {
+                        //                 if *v != pane.cmd_input {
+                        //                     pane.cmd_history.push(cmd_input);
+                        //                 }
+                        //             }
+                        //         } else {
+                        //             pane.cmd_history.push(cmd_input);
+                        //         }
+                        //         prompt.push_str(pane.cmd_input.clone().as_str());
+                        //         pane.println('\n');
+                        //
+                        //         let cmd = pane.cmd_input.clone();
+                        //         pane.run_command(cmd.clone());
+                        //         cmd
+                        //     };
+                        //     app.dbg(format!("running command {}", cmd));
+                        //     // todo make this run some version of app.update_app()
+                        //     // app.update_app();
+                        // }
                         KeyCode::End => {
                             app.mode = AppMode::Command;
                         }
